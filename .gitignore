@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+.runtime/
+config/local.json
+notes/
+dist/
+skill.zip
+github-learning-automation-v*.zip

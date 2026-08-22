@@ -1,0 +1,3 @@
+interface:
+  display_name: "GitHub 项目转笔记"
+  short_description: "把 GitHub 仓库整理成可信、可速读的学习笔记"
