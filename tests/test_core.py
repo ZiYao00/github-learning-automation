@@ -4,11 +4,11 @@ from pathlib import Path
 import pytest
 
 from github_learning.auth import resolve_github_auth
-from github_learning.config import Settings, configure_notes, load_settings
+from github_learning.config import ConfigurationError, Settings, configure_notes, load_settings
 from github_learning.github_client import SourceBundle
 from github_learning.input_resolver import resolve_repository
-from github_learning.lifecycle import finalize_job, prepare_job
-from github_learning.note_template import render_note, unique_note_path
+from github_learning.lifecycle import finalize_job, preflight_publish, prepare_job
+from github_learning.note_template import render_note, repository_identity_from_text, unique_note_path
 
 
 def test_resolve_repository_url_and_slug():
@@ -413,3 +413,124 @@ def test_manifest_prefers_raw_download_and_optional_release_failure_is_warning(m
     assert bundle.manifests["pyproject.toml"].startswith("[project]")
     assert any("Latest Release" in warning for warning in bundle.warnings)
     assert not any(url.endswith("/contents/pyproject.toml") for url in calls)
+
+
+def test_configure_notes_root_requires_existing_directory(tmp_path: Path):
+    project = tmp_path / "project"
+    missing = tmp_path / "missing-notes"
+
+    with pytest.raises(ConfigurationError) as exc_info:
+        configure_notes(project, notes_root=missing)
+
+    assert exc_info.value.code == "notes_root_missing"
+    assert not (project / "config/local.json").exists()
+
+
+def test_load_settings_rejects_stale_notes_root(tmp_path: Path):
+    config = tmp_path / "config/local.json"
+    config.parent.mkdir(parents=True)
+    config.write_text(json.dumps({"notes_root": str(tmp_path / "missing-notes")}), encoding="utf-8")
+
+    with pytest.raises(ConfigurationError) as exc_info:
+        load_settings(tmp_path)
+
+    assert exc_info.value.code == "notes_root_missing"
+
+
+def test_repository_identity_only_reads_frontmatter():
+    body_only = "# Demo\n\n```yaml\nrepo: owner/demo\n```\n"
+    frontmatter = '---\nrepo: "owner/demo"\n---\n\n# Demo\n'
+
+    assert repository_identity_from_text(body_only) is None
+    assert repository_identity_from_text(frontmatter) == "owner/demo"
+
+
+def test_preflight_detects_managed_refresh_before_collection(tmp_path: Path):
+    project = tmp_path / "project"
+    runtime_root = project / ".runtime" / "github-learning"
+    notes_root = project / "notes"
+    notes_root.mkdir(parents=True)
+    existing = notes_root / "demo.md"
+    existing.write_text(render_note(_valid_job(), _valid_analysis()), encoding="utf-8")
+    settings = Settings(project, notes_root, runtime_root, project / "config/local.json", False)
+
+    result = preflight_publish(settings, "owner/demo")
+
+    assert result["status"] == "ready"
+    assert result["operation"] == "refresh"
+    assert result["note_path"] == str(existing)
+    assert not runtime_root.exists()
+
+
+def test_preflight_blocks_legacy_before_collection_and_allows_explicit_migration(tmp_path: Path):
+    project = tmp_path / "project"
+    runtime_root = project / ".runtime" / "github-learning"
+    notes_root = project / "notes"
+    notes_root.mkdir(parents=True)
+    legacy = notes_root / "demo.md"
+    legacy.write_text('---\nrepo: "owner/demo"\n---\n\n# demo\n', encoding="utf-8")
+    settings = Settings(project, notes_root, runtime_root, project / "config/local.json", False)
+
+    blocked = preflight_publish(settings, "owner/demo")
+    allowed = preflight_publish(settings, "owner/demo", replace_legacy=True)
+
+    assert blocked["status"] == "legacy_note_refresh_blocked"
+    assert allowed["status"] == "ready"
+    assert allowed["operation"] == "replace_legacy"
+    assert not runtime_root.exists()
+
+
+def test_prepare_records_legacy_authorization_in_job(tmp_path: Path):
+    project = tmp_path / "project"
+    runtime_root = project / ".runtime" / "github-learning"
+    notes_root = project / "notes"
+    notes_root.mkdir(parents=True)
+    (notes_root / "demo.md").write_text('---\nrepo: "owner/demo"\n---\n\n# demo\n', encoding="utf-8")
+    settings = Settings(project, notes_root, runtime_root, project / "config/local.json", False)
+    resolved = resolve_repository("owner/demo")
+    bundle = SourceBundle(
+        repository={"name": "demo", "full_name": "owner/demo", "html_url": "https://github.com/owner/demo"},
+        readme="# Demo",
+        root_entries=[],
+        manifests={},
+        latest_release=None,
+    )
+
+    result = prepare_job(settings, resolved, bundle, replace_legacy=True)
+    job = json.loads((Path(result["job_dir"]) / "job.json").read_text(encoding="utf-8"))
+
+    assert result["status"] == "analysis_required"
+    assert job["publish_operation"] == "replace_legacy"
+    assert job["replace_legacy_authorized"] is True
+
+
+def test_render_note_declares_learning_lab_and_github_extension_classes():
+    text = render_note(_valid_job(), _valid_analysis())
+
+    assert "  - learning-page" in text
+    assert "  - github-note" in text
+
+
+def test_obsidian_extension_requires_core_without_video_dependency():
+    project_root = Path(__file__).resolve().parents[1]
+    core = (project_root / "obsidian/snippets/learning-lab.css").read_text(encoding="utf-8")
+    extension = (project_root / "obsidian/snippets/github-note.css").read_text(encoding="utf-8")
+
+    assert ".learning-page" in core
+    assert ".learning-page.github-note" in extension
+    assert "Requires: learning-lab.css" in extension
+    assert "video-note" not in extension
+
+
+def test_public_sources_do_not_embed_personal_vault_path():
+    project_root = Path(__file__).resolve().parents[1]
+    forbidden = "M:" + "\\ZiYao" + "\\Note"
+    excluded_parts = {".git", ".runtime", "__pycache__", "dist", "notes"}
+    excluded_names = {"local.json"}
+
+    for path in project_root.rglob("*"):
+        if not path.is_file() or path.name in excluded_names or any(part in excluded_parts for part in path.parts):
+            continue
+        if path.suffix.lower() not in {".py", ".md", ".toml", ".json", ".yaml", ".yml", ".css", ".txt"}:
+            continue
+        assert forbidden not in path.read_text(encoding="utf-8", errors="ignore"), str(path)

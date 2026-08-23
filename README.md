@@ -61,6 +61,31 @@ config/local.json.example
 
 `config/local.json` 已被 `.gitignore` 排除。
 
+如果使用 `--notes-root` 直接指定普通笔记目录，该目录必须已经存在；这样可以避免拼错路径后静默创建到错误位置。Vault 模式只要求 Vault 根目录存在且包含 `.obsidian`，`GitHub-Note` 子目录仍可由程序首次发布时自动创建。
+
+### Obsidian 样式
+
+项目提供两层样式：
+
+- `obsidian/snippets/learning-lab.css`：共享 Core Design System；
+- `obsidian/snippets/github-note.css`：仅服务 `github-note` 的轻量 Extension。
+
+不要为 GitHub 笔记安装 `video-note.css`。把上面两份 CSS 复制到你的 Vault：
+
+```text
+<vault_root>\.obsidian\snippets\
+```
+
+然后在 Obsidian 的「设置 → 外观 → CSS 代码片段」中同时启用 `learning-lab` 与 `github-note`。生成笔记已经固定声明：
+
+```yaml
+cssclasses:
+  - learning-page
+  - github-note
+```
+
+因此不需要手工给每篇笔记补 class。
+
 ### GitHub 登录与额度
 
 程序按以下顺序寻找认证：
@@ -169,19 +194,19 @@ python scripts\github_learning.py prepare "https://github.com/owner/repo" --new-
 
 ### 第一次测试留下的旧版笔记
 
-v0.1 笔记没有 managed marker。为避免覆盖你可能已经人工修改的内容，第一次 refresh 会返回：
+v0.1 笔记没有 managed marker。现在 `prepare` 会在访问 GitHub API 前检查已有笔记；发现旧版笔记时直接返回：
 
 ```text
 legacy_note_refresh_blocked
 ```
 
-确认允许迁移后再显式：
+确认允许迁移后重新显式执行：
 
 ```powershell
-python scripts\github_learning.py finalize "<job_dir>" --replace-legacy
+python scripts\github_learning.py prepare "https://github.com/owner/repo" --replace-legacy
 ```
 
-程序会先把旧文件完整保存到当前 runtime job 的 `legacy_note_backup.md`，再刷新正式笔记。
+授权会写入本次 runtime job；`finalize` 真正覆盖旧笔记前仍会先把旧文件完整保存为 `legacy_note_backup.md`。旧 job 仍兼容 `finalize --replace-legacy`，但新流程优先在 `prepare` 阶段完成授权。
 
 ## 同名仓库
 

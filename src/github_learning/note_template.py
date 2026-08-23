@@ -9,6 +9,7 @@ MANAGED_START = "<!-- GITHUB_NOTE_MANAGED_START -->"
 MANAGED_END = "<!-- GITHUB_NOTE_MANAGED_END -->"
 DEFAULT_USER_TAIL = "## 我的记录\n\n<!-- 此处及其后的个人内容会在 refresh 时保留。 -->\n"
 _REPO_LINE_RE = re.compile(r"^repo:\s*(.+?)\s*$", re.MULTILINE)
+_FRONTMATTER_RE = re.compile(r"\A---[ \t]*\r?\n(?P<body>.*?)\r?\n---[ \t]*(?:\r?\n|\Z)", re.DOTALL)
 
 
 def safe_title(value: str) -> str:
@@ -61,7 +62,10 @@ def _callout_list(kind: str, title: str, values: list[str] | None) -> str:
 
 
 def repository_identity_from_text(text: str) -> str | None:
-    match = _REPO_LINE_RE.search(text[:12000])
+    frontmatter = _FRONTMATTER_RE.match(text)
+    if not frontmatter:
+        return None
+    match = _REPO_LINE_RE.search(frontmatter.group("body"))
     if not match:
         return None
     raw = match.group(1).strip()

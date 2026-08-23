@@ -18,6 +18,53 @@ from .note_template import (
 )
 
 
+def preflight_publish(
+    settings: Settings,
+    full_name: str,
+    *,
+    publish_mode: str = "upsert",
+    replace_legacy: bool = False,
+) -> dict[str, Any]:
+    if settings.notes_is_fallback:
+        return {
+            "status": "configuration_required",
+            "message": "尚未显式配置笔记保存位置，拒绝创建采集任务。",
+            "local_config": str(settings.local_config_path),
+        }
+    if publish_mode not in {"upsert", "new"}:
+        raise ValueError(f"不支持的 publish_mode：{publish_mode}")
+    if publish_mode == "new":
+        return {"status": "ready", "operation": "create_new", "repository": full_name}
+
+    matches = find_notes_by_repository(settings.notes_root, full_name)
+    if len(matches) > 1:
+        return {
+            "status": "duplicate_repository_notes",
+            "message": "同一 repository identity 找到多篇笔记，采集已停止，请先人工确认。",
+            "repository": full_name,
+            "matches": [str(path) for path in matches],
+        }
+    if not matches:
+        return {"status": "ready", "operation": "create", "repository": full_name}
+
+    path = matches[0]
+    existing = path.read_text(encoding="utf-8")
+    if not has_managed_region(existing) and not replace_legacy:
+        return {
+            "status": "legacy_note_refresh_blocked",
+            "message": "现有笔记来自旧版或缺少 managed marker。为避免覆盖人工编辑，本次未开始采集。",
+            "repository": full_name,
+            "note_path": str(path),
+            "next_action": "确认允许迁移后，重新 prepare 并显式使用 --replace-legacy；finalize 会先保存完整备份。",
+        }
+    return {
+        "status": "ready",
+        "operation": "replace_legacy" if not has_managed_region(existing) else "refresh",
+        "repository": full_name,
+        "note_path": str(path),
+    }
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -73,24 +120,28 @@ def prepare_job(
     bundle: SourceBundle,
     *,
     publish_mode: str = "upsert",
+    replace_legacy: bool = False,
 ) -> dict[str, Any]:
-    if settings.notes_is_fallback:
-        return {
-            "status": "configuration_required",
-            "message": "尚未显式配置笔记保存位置，拒绝创建采集任务。",
-            "local_config": str(settings.local_config_path),
-        }
-    if publish_mode not in {"upsert", "new"}:
-        raise ValueError(f"不支持的 publish_mode：{publish_mode}")
+    preflight = preflight_publish(
+        settings,
+        resolved.full_name,
+        publish_mode=publish_mode,
+        replace_legacy=replace_legacy,
+    )
+    if preflight["status"] != "ready":
+        return preflight
 
     job_id = f"{resolved.owner}__{resolved.repo}__{uuid.uuid4().hex[:8]}"
     job_dir = settings.runtime_root / job_id
     job_dir.mkdir(parents=True, exist_ok=False)
     repo = bundle.repository
     job = {
-        "version": 2,
+        "version": 3,
         "job_id": job_id,
         "publish_mode": publish_mode,
+        "publish_operation": preflight["operation"],
+        "replace_legacy_authorized": replace_legacy,
+        "target_note": preflight.get("note_path", ""),
         "collected_at": _now(),
         "collected_local_date": _local_date(),
         "repository": {
@@ -241,13 +292,14 @@ def finalize_job(settings: Settings, job_dir: Path, *, replace_legacy: bool = Fa
         path = matches[0]
         existing = path.read_text(encoding="utf-8")
         if not has_managed_region(existing):
-            if not replace_legacy:
+            legacy_authorized = replace_legacy or bool(job.get("replace_legacy_authorized"))
+            if not legacy_authorized:
                 return {
                     "status": "legacy_note_refresh_blocked",
                     "message": "现有笔记来自旧版或缺少 managed marker。为避免覆盖人工编辑，本次没有刷新。",
                     "note_path": str(path),
                     "job_dir": str(job_dir),
-                    "next_action": "确认旧笔记无需保留原位置编辑后，可显式使用 finalize --replace-legacy；程序会先在 runtime 保存完整备份。",
+                    "next_action": "推荐重新 prepare 并显式使用 --replace-legacy；兼容旧 job 时也可 finalize --replace-legacy。程序会先在 runtime 保存完整备份。",
                 }
             legacy_backup_path = job_dir / "legacy_note_backup.md"
             if legacy_backup_path.exists():

@@ -38,7 +38,7 @@ python scripts\github_learning.py configure --vault-root "D:\Notes\MyVault" --no
 ## Workflow
 
 1. Confirm `doctor` permits the run.
-2. Run `prepare "<github repository>"`. Default mode is upsert: `owner/repo` is the stable identity, so an existing managed note will be refreshed instead of producing `（2）`.
+2. Run `prepare "<github repository>"`. Default mode is upsert: `owner/repo` is the stable identity, so an existing managed note will be refreshed instead of producing `（2）`. The CLI checks duplicate/legacy note state before fetching GitHub sources.
 3. Use `--new-note` only when the user explicitly wants a second independent note for the same repository.
 4. Read the returned `agent_handoff.md`, `source_bundle.md`, and `analysis.json`.
 5. Fill only `analysis.json`. Base every repository fact on `source_bundle.md`; do not use model memory to fill missing details.
@@ -55,14 +55,14 @@ python scripts\github_learning.py configure --vault-root "D:\Notes\MyVault" --no
 
 A v0.2+ note has an auto-managed region followed by a user-preserved tail, normally beginning with `## 我的记录`. Refresh may rewrite Frontmatter and the managed region, but must preserve everything after the managed end marker.
 
-If `finalize` returns `legacy_note_refresh_blocked`, do not automatically retry with `--replace-legacy`. Explain that the existing note lacks refresh markers and may contain manual edits. Only after explicit user authorization may you run:
+If `prepare` returns `legacy_note_refresh_blocked`, do not continue to GitHub collection or analysis. Explain that the existing note lacks refresh markers and may contain manual edits. Only after explicit user authorization may you rerun:
 
 ```powershell
-python scripts\github_learning.py finalize "<job_dir>" --replace-legacy
+python scripts\github_learning.py prepare "<github repository>" --replace-legacy
 ```
 
-The program must first save the old note to `legacy_note_backup.md` inside the retained runtime job.
+The authorization is stored in the new runtime job. `finalize` must still save the old note to `legacy_note_backup.md` before replacing it. For older jobs created before this preflight behavior, `finalize "<job_dir>" --replace-legacy` remains a compatibility path.
 
-If `finalize` returns `duplicate_repository_notes`, stop and surface the matching note paths. Do not guess which duplicate should be overwritten.
+If `prepare` (or compatibility `finalize`) returns `duplicate_repository_notes`, stop and surface the matching note paths. Do not guess which duplicate should be overwritten.
 
 Do not perform source-code review, issue mining, PR analysis, security auditing, or repository modification unless the user separately asks for those tasks.

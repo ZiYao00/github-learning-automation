@@ -23,6 +23,18 @@
 
 没有内容的章节必须省略，不输出“暂无”。
 
+## Obsidian 样式契约
+
+生成笔记固定声明：
+
+```yaml
+cssclasses:
+  - learning-page
+  - github-note
+```
+
+`learning-page` 使用共享 `learning-lab.css` Core；`github-note` 使用本项目的轻量 Extension `github-note.css`。GitHub 笔记不依赖 `video-note.css`，Extension 不应重复 Core 已有的 summary / meta / risk / resource 等组件。
+
 ## Repository identity
 
 `owner/repo` 是一篇 GitHub 项目笔记的稳定身份，Frontmatter 固定保留：

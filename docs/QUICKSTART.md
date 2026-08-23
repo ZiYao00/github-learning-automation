@@ -69,10 +69,19 @@ demo.md
 demo · ownerB.md
 ```
 
-如果 refresh 第一次测试遗留的 v0.1 笔记，默认应返回 `legacy_note_refresh_blocked`。确认允许迁移后才使用：
+再次学习第一次测试遗留的 v0.1 笔记时，`prepare` 应在 GitHub 采集前返回 `legacy_note_refresh_blocked`，且不创建 runtime job。确认允许迁移后才重新执行：
 
 ```powershell
-python scripts\github_learning.py finalize "<job_dir>" --replace-legacy
+python scripts\github_learning.py prepare "https://github.com/owner/demo" --replace-legacy
 ```
 
-旧文件原文必须先保存到该 runtime job 的 `legacy_note_backup.md`。
+授权后的 `finalize` 必须先把旧文件原文保存到该 runtime job 的 `legacy_note_backup.md`，再覆盖正式笔记。旧 job 仍可兼容 `finalize --replace-legacy`。
+
+## 4. Obsidian 样式
+
+把以下两个文件复制到 `<vault_root>\.obsidian\snippets\`，并在 Obsidian「设置 → 外观 → CSS 代码片段」中同时启用：
+
+- `obsidian/snippets/learning-lab.css`
+- `obsidian/snippets/github-note.css`
+
+GitHub 笔记不需要 `video-note.css`。生成 Frontmatter 必须同时包含 `learning-page` 与 `github-note`。

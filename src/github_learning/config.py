@@ -39,6 +39,22 @@ def _resolve_path(project_root: Path, value: str) -> Path:
     return path if path.is_absolute() else project_root / path
 
 
+def _require_directory(path: Path, *, code: str, label: str) -> Path:
+    resolved = path.expanduser().resolve()
+    if not resolved.exists():
+        raise ConfigurationError(code, f"{label}不存在：{resolved}")
+    if not resolved.is_dir():
+        raise ConfigurationError(code, f"{label}不是目录：{resolved}")
+    return resolved
+
+
+def _require_vault(path: Path) -> Path:
+    resolved = _require_directory(path, code="vault_root_missing", label="Vault 目录")
+    if not (resolved / ".obsidian").is_dir():
+        raise ConfigurationError("vault_root_not_obsidian", f"未在该目录发现 .obsidian：{resolved}")
+    return resolved
+
+
 def _load_local(project_root: Path) -> tuple[Path, dict[str, str]]:
     path = project_root / LOCAL_CONFIG
     if not path.exists():
@@ -83,10 +99,14 @@ def load_settings(project_root: Path) -> Settings:
         )
 
     if env_root:
-        notes_root = _resolve_path(project_root, env_root)
+        notes_root = _require_directory(
+            _resolve_path(project_root, env_root),
+            code="notes_root_missing",
+            label="笔记目录",
+        )
         return Settings(project_root, notes_root, project_root / ".runtime" / "github-learning", local_path, False, notes_source="environment_notes_root")
     if env_vault:
-        vault_root = _resolve_path(project_root, env_vault)
+        vault_root = _require_vault(_resolve_path(project_root, env_vault))
         notes_subdir = _safe_relative(env_subdir or str(DEFAULT_NOTES_SUBDIR))
         return Settings(
             project_root,
@@ -99,10 +119,14 @@ def load_settings(project_root: Path) -> Settings:
             "environment_vault",
         )
     if local.get("notes_root"):
-        notes_root = _resolve_path(project_root, local["notes_root"])
+        notes_root = _require_directory(
+            _resolve_path(project_root, local["notes_root"]),
+            code="notes_root_missing",
+            label="笔记目录",
+        )
         return Settings(project_root, notes_root, project_root / ".runtime" / "github-learning", local_path, False, notes_source="local_notes_root")
     if local.get("vault_root"):
-        vault_root = _resolve_path(project_root, local["vault_root"])
+        vault_root = _require_vault(_resolve_path(project_root, local["vault_root"]))
         notes_subdir = _safe_relative(local.get("notes_subdir", str(DEFAULT_NOTES_SUBDIR)))
         return Settings(
             project_root,
@@ -133,16 +157,13 @@ def configure_notes(
         raise ConfigurationError("configure_missing_target", "必须提供 vault_root 或 notes_root。")
 
     if vault_root is not None:
-        vault_root = vault_root.expanduser().resolve()
-        if not vault_root.is_dir():
-            raise ConfigurationError("vault_root_missing", f"Vault 目录不存在：{vault_root}")
-        if not (vault_root / ".obsidian").is_dir():
-            raise ConfigurationError("vault_root_not_obsidian", f"未在该目录发现 .obsidian：{vault_root}")
+        vault_root = _require_vault(vault_root)
         normalized_subdir = _safe_relative(notes_subdir)
         payload = {"vault_root": str(vault_root), "notes_subdir": str(normalized_subdir)}
     else:
         assert notes_root is not None
-        payload = {"notes_root": str(notes_root.expanduser().resolve())}
+        validated_root = _require_directory(notes_root, code="notes_root_missing", label="笔记目录")
+        payload = {"notes_root": str(validated_root)}
 
     path = project_root / LOCAL_CONFIG
     path.parent.mkdir(parents=True, exist_ok=True)

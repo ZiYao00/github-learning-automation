@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.1 - 2026-08-23
+
+Stability, portability, and Obsidian integration update.
+
+- Validate direct `--notes-root` targets instead of silently accepting a mistyped path.
+- Restrict repository identity detection to YAML frontmatter so body code blocks cannot create false duplicate matches.
+- Move duplicate/legacy note preflight ahead of GitHub source collection.
+- Add explicit `prepare --replace-legacy`; retain backup-before-replace behavior and compatibility with legacy finalize authorization.
+- Add shared `learning-lab.css` Core plus a small `github-note.css` Extension; GitHub notes do not depend on `video-note.css`.
+- Document Obsidian snippet installation and the fixed `learning-page` + `github-note` style contract.
+- Expand regression coverage for configuration, frontmatter identity, preflight behavior, legacy authorization, and style classes.
+
 ## 0.2.0 - 2026-08-22
 
 Long-term note identity and refresh update.

@@ -10,7 +10,7 @@ from .auth import probe_rate_limit, resolve_github_auth
 from .config import ConfigurationError, configure_notes, load_settings
 from .github_client import GitHubFetchError, fetch_repository_sources
 from .input_resolver import resolve_repository
-from .lifecycle import finalize_job, prepare_job
+from .lifecycle import finalize_job, preflight_publish, prepare_job
 
 
 def _project_root() -> Path:
@@ -105,6 +105,11 @@ def main() -> int:
         action="store_true",
         help="为同一仓库显式创建另一篇笔记；默认按 repo identity 创建或刷新现有笔记。",
     )
+    p_prepare.add_argument(
+        "--replace-legacy",
+        action="store_true",
+        help="显式允许迁移缺少 managed marker 的旧版笔记；finalize 前会先备份旧文件。",
+    )
 
     p_finalize = sub.add_parser("finalize", help="验证 Agent 分析并发布 Markdown")
     p_finalize.add_argument("job_dir")
@@ -172,9 +177,26 @@ def main() -> int:
                 return 0
 
             resolved = resolve_repository(args.repository)
-            bundle = fetch_repository_sources(resolved.full_name, auth)
             publish_mode = "new" if args.new_note else "upsert"
-            _print(prepare_job(settings, resolved, bundle, publish_mode=publish_mode))
+            preflight = preflight_publish(
+                settings,
+                resolved.full_name,
+                publish_mode=publish_mode,
+                replace_legacy=args.replace_legacy,
+            )
+            if preflight["status"] != "ready":
+                _print(preflight)
+                return 0
+            bundle = fetch_repository_sources(resolved.full_name, auth)
+            _print(
+                prepare_job(
+                    settings,
+                    resolved,
+                    bundle,
+                    publish_mode=publish_mode,
+                    replace_legacy=args.replace_legacy,
+                )
+            )
             return 0
 
         if args.command == "finalize":
