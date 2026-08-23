@@ -212,6 +212,7 @@ def test_frontmatter_quotes_special_tag_values():
 
 def test_auth_reuses_logged_in_gh_cli(monkeypatch):
     from types import SimpleNamespace
+
     import github_learning.auth as auth_module
 
     monkeypatch.delenv("GITHUB_TOKEN", raising=False)
@@ -500,8 +501,41 @@ def test_prepare_records_legacy_authorization_in_job(tmp_path: Path):
     job = json.loads((Path(result["job_dir"]) / "job.json").read_text(encoding="utf-8"))
 
     assert result["status"] == "analysis_required"
+    assert job["version"] == 4
     assert job["publish_operation"] == "replace_legacy"
     assert job["replace_legacy_authorized"] is True
+    assert job["target_note"].endswith("demo.md")
+    assert len(job["target_note_sha256"]) == 64
+
+
+def test_authorized_legacy_refresh_rejects_target_changed_after_prepare(tmp_path: Path):
+    project = tmp_path / "project"
+    runtime_root = project / ".runtime" / "github-learning"
+    notes_root = project / "notes"
+    notes_root.mkdir(parents=True)
+    legacy = notes_root / "demo.md"
+    legacy.write_text('---\nrepo: "owner/demo"\n---\n\n# demo\n\noriginal\n', encoding="utf-8")
+    settings = Settings(project, notes_root, runtime_root, project / "config/local.json", False)
+    resolved = resolve_repository("owner/demo")
+    bundle = SourceBundle(
+        repository={"name": "demo", "full_name": "owner/demo", "html_url": "https://github.com/owner/demo"},
+        readme="# Demo",
+        root_entries=[],
+        manifests={},
+        latest_release=None,
+    )
+
+    prepared = prepare_job(settings, resolved, bundle, replace_legacy=True)
+    job_dir = Path(prepared["job_dir"])
+    (job_dir / "analysis.json").write_text(json.dumps(_valid_analysis("新摘要"), ensure_ascii=False), encoding="utf-8")
+    changed_text = '---\nrepo: "owner/demo"\n---\n\n# demo\n\nchanged after authorization\n'
+    legacy.write_text(changed_text, encoding="utf-8")
+
+    result = finalize_job(settings, job_dir)
+
+    assert result["status"] == "legacy_target_changed"
+    assert legacy.read_text(encoding="utf-8") == changed_text
+    assert not (job_dir / "legacy_note_backup.md").exists()
 
 
 def test_render_note_declares_learning_lab_and_github_extension_classes():
@@ -511,20 +545,22 @@ def test_render_note_declares_learning_lab_and_github_extension_classes():
     assert "  - github-note" in text
 
 
-def test_obsidian_extension_requires_core_without_video_dependency():
+def test_obsidian_style_consumer_contract_points_to_shared_repository():
     project_root = Path(__file__).resolve().parents[1]
-    core = (project_root / "obsidian/snippets/learning-lab.css").read_text(encoding="utf-8")
-    extension = (project_root / "obsidian/snippets/github-note.css").read_text(encoding="utf-8")
+    contract = json.loads((project_root / "config/obsidian-style.json").read_text(encoding="utf-8"))
 
-    assert ".learning-page" in core
-    assert ".learning-page.github-note" in extension
-    assert "Requires: learning-lab.css" in extension
-    assert "video-note" not in extension
+    assert contract["repository"] == "https://github.com/ZiYao00/obsidian-learning-snippets"
+    assert contract["core"] == "snippets/learning-lab.css"
+    assert contract["extensions"] == ["snippets/github-note.css"]
+    assert contract["cssclasses"] == ["learning-page", "github-note"]
 
 
-def test_public_sources_do_not_embed_personal_vault_path():
+def test_public_sources_do_not_embed_personal_local_paths():
     project_root = Path(__file__).resolve().parents[1]
-    forbidden = "M:" + "\\ZiYao" + "\\Note"
+    forbidden_paths = [
+        "C:" + "\\Users" + "\\example" + "\\Documents" + "\\MyVault",
+        "D:" + "\\Projects" + "\\github-learning-automation",
+    ]
     excluded_parts = {".git", ".runtime", "__pycache__", "dist", "notes"}
     excluded_names = {"local.json"}
 
@@ -533,4 +569,6 @@ def test_public_sources_do_not_embed_personal_vault_path():
             continue
         if path.suffix.lower() not in {".py", ".md", ".toml", ".json", ".yaml", ".yml", ".css", ".txt"}:
             continue
-        assert forbidden not in path.read_text(encoding="utf-8", errors="ignore"), str(path)
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        for forbidden in forbidden_paths:
+            assert forbidden not in text, str(path)

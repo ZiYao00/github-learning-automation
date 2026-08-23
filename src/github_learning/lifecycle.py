@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import uuid
 from datetime import datetime, timezone
@@ -16,6 +17,10 @@ from .note_template import (
     new_repository_note_path,
     render_note,
 )
+
+
+def _file_sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def preflight_publish(
@@ -48,7 +53,8 @@ def preflight_publish(
         return {"status": "ready", "operation": "create", "repository": full_name}
 
     path = matches[0]
-    existing = path.read_text(encoding="utf-8")
+    existing_bytes = path.read_bytes()
+    existing = existing_bytes.decode("utf-8")
     if not has_managed_region(existing) and not replace_legacy:
         return {
             "status": "legacy_note_refresh_blocked",
@@ -62,6 +68,7 @@ def preflight_publish(
         "operation": "replace_legacy" if not has_managed_region(existing) else "refresh",
         "repository": full_name,
         "note_path": str(path),
+        "note_sha256": hashlib.sha256(existing_bytes).hexdigest(),
     }
 
 
@@ -136,12 +143,13 @@ def prepare_job(
     job_dir.mkdir(parents=True, exist_ok=False)
     repo = bundle.repository
     job = {
-        "version": 3,
+        "version": 4,
         "job_id": job_id,
         "publish_mode": publish_mode,
         "publish_operation": preflight["operation"],
         "replace_legacy_authorized": replace_legacy,
         "target_note": preflight.get("note_path", ""),
+        "target_note_sha256": preflight.get("note_sha256", ""),
         "collected_at": _now(),
         "collected_local_date": _local_date(),
         "repository": {
@@ -189,7 +197,7 @@ def prepare_job(
 4. 官方资料明确写了怎样安装和使用？
 5. 有哪些重要注意事项？
 6. 官方资料之间是否存在互相矛盾的版本、许可证、安装或状态说明？
-7. 应给 3-5 个什么知识标签？
+7. 应给 2-5 个什么知识标签？
 
 规则：
 
@@ -198,7 +206,7 @@ def prepare_job(
 - `capabilities` / `use_cases` / `caveats`：只保留有长期检索价值的条目。
 - `install` / `usage` / `configuration`：优先整理官方推荐的最短用户路径；来源没写就留空，禁止猜命令、版本、路径。
 - `source_conflicts`：只记录当前官方来源之间明确存在的冲突；如 README 两处说法不一致，保留冲突事实，不替维护者裁决。没有冲突就留空。
-- `tags`：3-5 个中文或常用技术标签；不要直接复制一长串 GitHub Topics。
+- `tags`：2-5 个中文或常用技术标签；不要直接复制一长串 GitHub Topics。
 - `Collection warnings` 代表采集覆盖不完整，不等于仓库本身有冲突；写作时不要把“没采到”误写成“不存在”。
 - 最后重新对照来源复核是否遗漏关键用途、安装方式、限制或资源，并把 `coverage_review.status` 设为 `passed`。
 """
@@ -292,7 +300,21 @@ def finalize_job(settings: Settings, job_dir: Path, *, replace_legacy: bool = Fa
         path = matches[0]
         existing = path.read_text(encoding="utf-8")
         if not has_managed_region(existing):
-            legacy_authorized = replace_legacy or bool(job.get("replace_legacy_authorized"))
+            job_authorized = bool(job.get("replace_legacy_authorized"))
+            if job_authorized and not replace_legacy:
+                target_note = str(job.get("target_note") or "").strip()
+                target_hash = str(job.get("target_note_sha256") or "").strip()
+                new_job_missing_target = int(job.get("version") or 0) >= 4 and (not target_note or not target_hash)
+                path_changed = bool(target_note) and Path(target_note).resolve() != path.resolve()
+                content_changed = bool(target_hash) and _file_sha256(path) != target_hash
+                if new_job_missing_target or path_changed or content_changed:
+                    return {
+                        "status": "legacy_target_changed",
+                        "message": "prepare 授权后的旧版笔记已发生变化；为避免把授权应用到不同内容，本次没有刷新。请重新 prepare 并再次确认迁移。",
+                        "note_path": str(path),
+                        "job_dir": str(job_dir),
+                    }
+            legacy_authorized = replace_legacy or job_authorized
             if not legacy_authorized:
                 return {
                     "status": "legacy_note_refresh_blocked",

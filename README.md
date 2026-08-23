@@ -24,7 +24,7 @@ GitHub URL
 需要 Python 3.10+，核心代码没有第三方运行依赖。**不要求先安装全局 CLI**；在项目根目录直接使用项目 launcher：
 
 ```powershell
-cd G:\GitHub\github-learning-automation
+cd <path-to>\github-learning-automation
 python scripts\github_learning.py doctor
 ```
 
@@ -65,12 +65,18 @@ config/local.json.example
 
 ### Obsidian 样式
 
-项目提供两层样式：
+本项目是共享样式系统的 **Consumer**，不再维护 Core / Extension 的独立副本，也不再保留项目级 `obsidian/` 样式目录。Canonical Source：
 
-- `obsidian/snippets/learning-lab.css`：共享 Core Design System；
-- `obsidian/snippets/github-note.css`：仅服务 `github-note` 的轻量 Extension。
+```text
+https://github.com/ZiYao00/obsidian-learning-snippets
+```
 
-不要为 GitHub 笔记安装 `video-note.css`。把上面两份 CSS 复制到你的 Vault：
+本项目所需组件由 `config/obsidian-style.json` 声明：
+
+- `snippets/learning-lab.css`：共享 Core Design System；
+- `snippets/github-note.css`：`github-note` Extension。
+
+不要为 GitHub 笔记安装 `video-note.css`。从共享仓库把上面两份 CSS 安装到你的 Vault：
 
 ```text
 <vault_root>\.obsidian\snippets\
@@ -206,7 +212,7 @@ legacy_note_refresh_blocked
 python scripts\github_learning.py prepare "https://github.com/owner/repo" --replace-legacy
 ```
 
-授权会写入本次 runtime job；`finalize` 真正覆盖旧笔记前仍会先把旧文件完整保存为 `legacy_note_backup.md`。旧 job 仍兼容 `finalize --replace-legacy`，但新流程优先在 `prepare` 阶段完成授权。
+授权会写入本次 runtime job，并绑定 `prepare` 当时的目标路径与文件 SHA-256。若旧笔记在授权后发生变化，`finalize` 返回 `legacy_target_changed`，要求重新 `prepare`，不会把旧授权套到新内容上。目标未变化时，`finalize` 覆盖前仍会先把旧文件完整保存为 `legacy_note_backup.md`。旧 job 仍兼容 `finalize --replace-legacy`，但新流程优先在 `prepare` 阶段完成授权。
 
 ## 同名仓库
 

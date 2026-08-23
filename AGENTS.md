@@ -32,6 +32,16 @@ python scripts\github_learning.py doctor
 python scripts\github_learning.py configure --vault-root "D:\Notes\MyVault" --notes-subdir "GitHub-Note"
 ```
 
+## Shared Obsidian style dependency
+
+Canonical source:
+
+```text
+https://github.com/ZiYao00/obsidian-learning-snippets
+```
+
+先读取 `config/obsidian-style.json` 判断本项目需要的 Core / Extension 与 `cssclasses`。不要在本仓库复制、重建、fork 或独立修改共享 CSS，也不要重新创建项目级 `obsidian/` 样式目录或 junction；如果共享视觉系统需要改变，应修改 canonical repository。本项目只负责输出 `learning-page` + `github-note` 的样式契约，CSS 的实际安装发生在 Obsidian Vault 层。
+
 ## 正式流程
 
 1. `doctor` 必须允许继续。
@@ -49,7 +59,7 @@ python scripts\github_learning.py configure --vault-root "D:\Notes\MyVault" --no
 
 v0.2+ 笔记的 managed marker 之后是用户保留区，默认从 `## 我的记录` 开始。Agent 不要把自动生成内容写到个人区，也不要在 refresh 时删除或重写个人区。
 
-旧版无 marker 笔记返回 `legacy_note_refresh_blocked` 时，不得自动追加 `--replace-legacy`。先说明风险；只有用户明确允许迁移时才能执行。程序会先把原文件保存为 runtime `legacy_note_backup.md`。
+旧版无 marker 笔记返回 `legacy_note_refresh_blocked` 时，不得自动追加 `--replace-legacy`。先说明风险；只有用户明确允许迁移时才能执行。授权后的新 job 会绑定目标路径与 SHA-256；如果 `finalize` 返回 `legacy_target_changed`，说明目标在授权后变化，必须重新 `prepare` 并再次确认。目标未变化时程序会先把原文件保存为 runtime `legacy_note_backup.md`。
 
 如果同一 `owner/repo` 找到多篇笔记而返回 `duplicate_repository_notes`，停止自动刷新并让用户先确认，不要猜哪篇是主笔记。
 

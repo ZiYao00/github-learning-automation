@@ -51,6 +51,10 @@ python scripts\github_learning.py configure --vault-root "D:\Notes\MyVault" --no
 12. Run `finalize "<job_dir>"`.
 13. Report completion only for `note_ready`. For `source_insufficient`, explain that no note was published because official material was insufficient.
 
+## Shared Obsidian style contract
+
+Read `config/obsidian-style.json` when style dependencies matter. The canonical CSS source is `https://github.com/ZiYao00/obsidian-learning-snippets`; this host project is only a consumer. Do not recreate, fork, or independently modify the shared Core/Extension CSS inside `github-learning-automation`. Generated notes must keep `learning-page` and `github-note` in Frontmatter.
+
 ## Refresh safety
 
 A v0.2+ note has an auto-managed region followed by a user-preserved tail, normally beginning with `## 我的记录`. Refresh may rewrite Frontmatter and the managed region, but must preserve everything after the managed end marker.
@@ -61,7 +65,7 @@ If `prepare` returns `legacy_note_refresh_blocked`, do not continue to GitHub co
 python scripts\github_learning.py prepare "<github repository>" --replace-legacy
 ```
 
-The authorization is stored in the new runtime job. `finalize` must still save the old note to `legacy_note_backup.md` before replacing it. For older jobs created before this preflight behavior, `finalize "<job_dir>" --replace-legacy` remains a compatibility path.
+The authorization is stored in the new runtime job and bound to the legacy note path plus its SHA-256 at prepare time. If `finalize` returns `legacy_target_changed`, the target changed after authorization: stop, rerun `prepare --replace-legacy`, and require fresh user authorization. When the target is unchanged, `finalize` must still save the old note to `legacy_note_backup.md` before replacing it. For older jobs created before this preflight behavior, `finalize "<job_dir>" --replace-legacy` remains a compatibility path.
 
 If `prepare` (or compatibility `finalize`) returns `duplicate_repository_notes`, stop and surface the matching note paths. Do not guess which duplicate should be overwritten.
 

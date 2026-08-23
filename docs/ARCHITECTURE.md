@@ -73,7 +73,7 @@ GITHUB_NOTE_MANAGED_END
 
 refresh 会重建 Frontmatter 和 managed region，并原样保留 `MANAGED_END` 之后的个人区域。这样仓库更新和用户实测可以共存在一篇笔记中。
 
-旧版笔记没有 marker 时，`--replace-legacy` 是显式迁移开关；启用前程序会在 runtime job 写入 `legacy_note_backup.md`，不静默丢失原文。
+旧版笔记没有 marker 时，`--replace-legacy` 是显式迁移开关。新 job 会记录授权目标路径与 SHA-256；如果目标在 prepare→finalize 之间变化，返回 `legacy_target_changed` 并要求重新授权。目标未变化时，程序会在覆盖前写入 runtime `legacy_note_backup.md`，不静默丢失原文。
 
 ## GitHub 采集与 API 降级
 
@@ -96,6 +96,16 @@ refresh 会重建 Frontmatter 和 managed region，并原样保留 `MANAGED_END`
 
 “没采到”不能写成“不存在”。
 
+## Shared Obsidian style dependency
+
+本项目只消费共享样式，不拥有 CSS 真源。Provider 是：
+
+```text
+https://github.com/ZiYao00/obsidian-learning-snippets
+```
+
+`config/obsidian-style.json` 是机器可读的 Consumer Contract，声明 Core、Extension 与 `cssclasses`。项目模板负责持续输出 `learning-page` + `github-note`；共享 CSS 的内容和版本在 Provider 仓库维护。本项目不通过受 Git 跟踪的 `obsidian/snippets/` junction 分发 CSS。
+
 ## 状态而不是异常
 
 以下属于预期业务状态，不应伪装成程序错误：
@@ -105,6 +115,7 @@ refresh 会重建 Frontmatter 和 managed region，并原样保留 `MANAGED_END`
 - `analysis_required`
 - `source_insufficient`
 - `legacy_note_refresh_blocked`
+- `legacy_target_changed`
 - `duplicate_repository_notes`
 - `note_ready`
 

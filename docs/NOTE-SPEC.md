@@ -33,7 +33,7 @@ cssclasses:
   - github-note
 ```
 
-`learning-page` 使用共享 `learning-lab.css` Core；`github-note` 使用本项目的轻量 Extension `github-note.css`。GitHub 笔记不依赖 `video-note.css`，Extension 不应重复 Core 已有的 summary / meta / risk / resource 等组件。
+`learning-page` 使用共享 `learning-lab.css` Core；`github-note` 使用共享 `github-note.css` Extension。两者的 Canonical Source 是 `https://github.com/ZiYao00/obsidian-learning-snippets`，本项目通过 `config/obsidian-style.json` 声明依赖，不再维护 CSS 副本。GitHub 笔记不依赖 `video-note.css`，Extension 不应重复 Core 已有的 summary / meta / risk / resource 等组件。
 
 ## Repository identity
 
@@ -57,7 +57,7 @@ v0.2+ 自动生成正文使用 managed marker。Marker 结束后的区域属于�
 
 用户自己的实测、补充和判断应写在该区域；refresh 会更新自动管理正文，同时保留 marker 结束后的内容。
 
-旧版笔记如果缺少 managed marker，程序默认返回 `legacy_note_refresh_blocked`，避免静默覆盖可能存在的人工编辑。只有用户明确允许 `--replace-legacy` 时才刷新；刷新前会把旧文件完整备份到当前 runtime job。
+旧版笔记如果缺少 managed marker，程序默认返回 `legacy_note_refresh_blocked`，避免静默覆盖可能存在的人工编辑。只有用户明确允许 `--replace-legacy` 时才刷新；新 job 会绑定授权时的目标路径与 SHA-256，若目标随后变化则返回 `legacy_target_changed` 并要求重新授权。目标未变化时，刷新前会把旧文件完整备份到当前 runtime job。
 
 ## 证据边界
 

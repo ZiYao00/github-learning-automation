@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.2 - 2026-08-23
+
+Shared-style migration and refresh-safety update.
+
+- Move Obsidian styling to the shared `obsidian-learning-snippets` provider and add `config/obsidian-style.json` as the consumer contract.
+- Stop treating local `obsidian/snippets/` files as the canonical style source; docs and Skill now point to the shared repository.
+- Bind authorized legacy-note migration to the prepare-time target path and SHA-256; return `legacy_target_changed` if the note changes before finalize.
+- Align generated Agent handoff guidance with the existing 2-5 tag validation rule.
+- Remove the public README dependency on a developer-specific local-project path.
+- Replace CSS-file-presence regression coverage with consumer-contract coverage.
+- Retire the project-local `obsidian/` directory entirely; shared CSS is declared through `config/obsidian-style.json` and installed from the canonical provider repository at the Vault level.
+
 ## 0.2.1 - 2026-08-23
 
 Stability, portability, and Obsidian integration update.

@@ -75,13 +75,21 @@ demo · ownerB.md
 python scripts\github_learning.py prepare "https://github.com/owner/demo" --replace-legacy
 ```
 
-授权后的 `finalize` 必须先把旧文件原文保存到该 runtime job 的 `legacy_note_backup.md`，再覆盖正式笔记。旧 job 仍可兼容 `finalize --replace-legacy`。
+授权后的新 job 会记录目标路径与 SHA-256。若旧笔记在 `prepare` 之后发生变化，`finalize` 应返回 `legacy_target_changed`，不得覆盖；重新 `prepare --replace-legacy` 后再次确认。目标未变化时，`finalize` 必须先把旧文件原文保存到该 runtime job 的 `legacy_note_backup.md`，再覆盖正式笔记。旧 job 仍可兼容 `finalize --replace-legacy`。
 
 ## 4. Obsidian 样式
 
-把以下两个文件复制到 `<vault_root>\.obsidian\snippets\`，并在 Obsidian「设置 → 外观 → CSS 代码片段」中同时启用：
+本项目不再携带共享 CSS 副本。先查看 `config/obsidian-style.json`，再从共享仓库安装所需文件：
 
-- `obsidian/snippets/learning-lab.css`
-- `obsidian/snippets/github-note.css`
+```text
+https://github.com/ZiYao00/obsidian-learning-snippets
+```
+
+需要：
+
+- `snippets/learning-lab.css`
+- `snippets/github-note.css`
+
+把它们放到 `<vault_root>\.obsidian\snippets\` 顶层，并在 Obsidian「设置 → 外观 → CSS 代码片段」中同时启用 `learning-lab` 与 `github-note`。
 
 GitHub 笔记不需要 `video-note.css`。生成 Frontmatter 必须同时包含 `learning-page` 与 `github-note`。
