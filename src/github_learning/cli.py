@@ -110,6 +110,11 @@ def main() -> int:
         action="store_true",
         help="显式允许迁移缺少 managed marker 的旧版笔记；finalize 前会先备份旧文件。",
     )
+    p_prepare.add_argument(
+        "--restart-job",
+        action="store_true",
+        help="显式忽略同仓库未完成 Job 并重新采集；旧 Job 保留用于审计，不会删除。",
+    )
 
     p_finalize = sub.add_parser("finalize", help="验证 Agent 分析并发布 Markdown")
     p_finalize.add_argument("job_dir")
@@ -183,6 +188,7 @@ def main() -> int:
                 resolved.full_name,
                 publish_mode=publish_mode,
                 replace_legacy=args.replace_legacy,
+                restart_job=args.restart_job,
             )
             if preflight["status"] != "ready":
                 _print(preflight)
@@ -195,6 +201,7 @@ def main() -> int:
                     bundle,
                     publish_mode=publish_mode,
                     replace_legacy=args.replace_legacy,
+                    restart_job=args.restart_job,
                 )
             )
             return 0
@@ -208,7 +215,7 @@ def main() -> int:
 
     except GitHubFetchError as exc:
         _print({"status": exc.code, "error": str(exc), "http_status": exc.status})
-        return 0 if exc.code in {"auth_required", "auth_invalid", "rate_limited_or_forbidden"} else 2
+        return 0 if exc.code in {"auth_required", "auth_invalid", "rate_limited_or_forbidden", "private_repository_blocked"} else 2
     except ConfigurationError as exc:
         _print({"status": exc.code, "error": str(exc)})
         return 0

@@ -139,11 +139,13 @@ def render_note(job: dict[str, Any], analysis: dict[str, Any], *, preserved_tail
         meta.append(license_name)
 
     updated = str(job.get("collected_local_date") or job["collected_at"][:10])
+    revision = str(job.get("revision") or "").strip()
     parts = [
         "---",
         f"repo: {_yaml_scalar(str(repo['full_name']))}",
         f"source: {_yaml_scalar(str(repo['html_url']))}",
         f"updated: {_yaml_scalar(updated)}",
+        *([f"revision: {_yaml_scalar(revision)}"] if revision else []),
         "tags:",
         _yaml_list(tags),
         "cssclasses:",
@@ -165,6 +167,11 @@ def render_note(job: dict[str, Any], analysis: dict[str, Any], *, preserved_tail
         ("它是什么", "what_it_is"),
         ("能做什么", "capabilities"),
         ("适合什么场景", "use_cases"),
+        ("运行要求", "requirements"),
+        ("兼容性", "compatibility"),
+        ("部署方式", "deployment"),
+        ("核心结构", "architecture"),
+        ("项目状态", "project_status"),
     ]:
         block = _section(title, analysis.get(key))
         if block:

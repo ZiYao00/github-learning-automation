@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.3.0 - 2026-10-06
+
+Source-depth, resumability, and multi-Agent maintenance update.
+
+- Pin repository-file collection to one default-branch HEAD revision and record the revision in runtime data and generated note Frontmatter.
+- Add a bounded, README-guided Source Planner for high-value official files such as SKILL.md, Agent metadata, manifests, support/quickstart/install/architecture/validation docs, while filtering vendor/build noise and avoiding raw config/Compose files as generic learning sources.
+- Add source_manifest.json plus per-source runtime files; keep source_bundle.md as a convenience view instead of the audit source of truth.
+- Treat repository text as untrusted data and explicitly prevent repository prompt instructions from changing Agent behavior or triggering execution.
+- Block private repositories by default even when current GitHub credentials can read them.
+- Expand analysis with optional requirements, compatibility, deployment, architecture, and project_status fields.
+- Add runtime Job state, in_progress reuse for interrupted work, explicit --restart-job supersession without deleting audit data, and idempotent finalize for published jobs.
+- Centralize the package/User-Agent version at 0.3.0.
+- Establish skill/github-note/SKILL.md as the single manually maintained Skill source and generate compatible ChatGPT, Codex, Claude, WorkBuddy, and legacy install surfaces.
+- Add Agent integration, maintenance handoff, release checklist, and v0.3 regression coverage.
+
 ## 0.2.2 - 2026-08-23
 
 Shared-style migration and refresh-safety update.

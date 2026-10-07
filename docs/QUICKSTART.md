@@ -93,3 +93,26 @@ https://github.com/ZiYao00/obsidian-learning-snippets
 把它们放到 `<vault_root>\.obsidian\snippets\` 顶层，并在 Obsidian「设置 → 外观 → CSS 代码片段」中同时启用 `learning-lab` 与 `github-note`。
 
 GitHub 笔记不需要 `video-note.css`。生成 Frontmatter 必须同时包含 `learning-page` 与 `github-note`。
+
+## 5. v0.3 Source Engine 回归
+
+至少准备五类公开仓库：Python、Node/Web、Docker、Agent/Skill、README 极少的小仓库。
+
+逐项检查：
+
+- `prepare` 返回 `revision`，且 `source_manifest.json` 中记录同一 revision；
+- Agent/Skill 仓库能优先采到 `SKILL.md` / `AGENTS.md` / `agents/openai.yaml` 等存在的高价值来源；vendor/third-party 内同名文件不得导致误分类；
+- README 明确链接的 quickstart / support matrix / install / architecture / validation / compatibility 等官方文档应优先于未链接的深层配置或 Compose 文件，并继续受预算限制；
+- manifest 的 `saved_as` 文件真实存在，truncated 与大小信息可信；
+- 仓库文本包含 Prompt Injection 语句时，只作为数据保留，不触发执行；
+- private repository 返回 `private_repository_blocked`；
+- 同仓库未完成 Job 再次 prepare 返回 `in_progress`；显式 `--restart-job` 后旧 Job 标记 `superseded`，新 Job 成为唯一活动任务；
+- 同一 published Job 连续 finalize 两次，第二次返回 `idempotent=true`，且正式笔记没有增加第二份。
+
+Agent Skill 同步检查：
+
+```powershell
+py -3.12 scripts\build_agent_skill_packages.py --check
+```
+
+开发环境装有 dev dependencies 时再执行 `pytest` / `ruff`；项目不得为了测试自行安装依赖。

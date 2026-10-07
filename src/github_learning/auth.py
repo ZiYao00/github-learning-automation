@@ -9,8 +9,10 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any
 
+from . import __version__
+
 API_ROOT = "https://api.github.com"
-USER_AGENT = "github-learning-automation/0.2.0"
+USER_AGENT = f"github-learning-automation/{__version__}"
 
 
 @dataclass(frozen=True)

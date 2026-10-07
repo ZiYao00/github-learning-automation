@@ -383,37 +383,59 @@ def test_collection_warnings_render_as_coverage_meta():
     assert "Latest Release" in text
 
 
-def test_manifest_prefers_raw_download_and_optional_release_failure_is_warning(monkeypatch):
+def test_collection_pins_repository_files_to_one_revision(monkeypatch):
     import github_learning.github_client as client
     from github_learning.auth import GitHubAuth
 
     calls: list[str] = []
+    raw_calls: list[str] = []
 
     def fake_json(url, auth=None):
         calls.append(url)
         if url.endswith("/repos/owner/demo"):
-            return {"name": "demo", "full_name": "owner/demo", "html_url": "https://github.com/owner/demo"}
-        if url.endswith("/repos/owner/demo/readme"):
-            return {"encoding": "base64", "content": "IyBEZW1v"}
-        if url.endswith("/repos/owner/demo/contents"):
-            return [
-                {
-                    "name": "pyproject.toml",
-                    "type": "file",
-                    "download_url": "https://raw.githubusercontent.com/owner/demo/main/pyproject.toml",
-                }
-            ]
+            return {
+                "name": "demo",
+                "full_name": "owner/demo",
+                "html_url": "https://github.com/owner/demo",
+                "default_branch": "main",
+                "private": False,
+            }
+        if url.endswith("/repos/owner/demo/commits/main"):
+            return {"sha": "abc123", "commit": {"tree": {"sha": "tree123"}}}
+        if "/repos/owner/demo/readme?" in url and "ref=abc123" in url:
+            return {"path": "README.md", "sha": "readme123", "encoding": "base64", "content": "IyBEZW1v"}
+        if "/repos/owner/demo/contents?" in url and "ref=abc123" in url:
+            return [{"name": "pyproject.toml", "path": "pyproject.toml", "type": "file", "sha": "manifest123"}]
+        if url.endswith("/repos/owner/demo/git/trees/tree123?recursive=1"):
+            return {
+                "tree": [
+                    {"path": "README.md", "type": "blob", "sha": "readme123", "size": 6},
+                    {"path": "pyproject.toml", "type": "blob", "sha": "manifest123", "size": 30},
+                    {"path": "SKILL.md", "type": "blob", "sha": "skill123", "size": 100},
+                ]
+            }
         if url.endswith("/repos/owner/demo/releases/latest"):
             raise client.GitHubFetchError("rate_limited_or_forbidden", "release limited", 403)
         raise AssertionError(url)
 
+    def fake_text(url, auth):
+        raw_calls.append(url)
+        if url.endswith("/pyproject.toml"):
+            return "[project]\nname='demo'\n"
+        if url.endswith("/SKILL.md"):
+            return "# Skill\n"
+        raise AssertionError(url)
+
     monkeypatch.setattr(client, "_request_json", fake_json)
-    monkeypatch.setattr(client, "_request_text", lambda url, auth: "[project]\nname='demo'\n")
+    monkeypatch.setattr(client, "_request_text", fake_text)
     bundle = client.fetch_repository_sources("owner/demo", GitHubAuth("token", "environment", True))
 
+    assert bundle.revision == "abc123"
+    assert bundle.source_profile == "agent-skill"
     assert bundle.manifests["pyproject.toml"].startswith("[project]")
+    assert any(source.path == "SKILL.md" for source in bundle.sources)
+    assert all("/abc123/" in url for url in raw_calls)
     assert any("Latest Release" in warning for warning in bundle.warnings)
-    assert not any(url.endswith("/contents/pyproject.toml") for url in calls)
 
 
 def test_configure_notes_root_requires_existing_directory(tmp_path: Path):
@@ -501,7 +523,7 @@ def test_prepare_records_legacy_authorization_in_job(tmp_path: Path):
     job = json.loads((Path(result["job_dir"]) / "job.json").read_text(encoding="utf-8"))
 
     assert result["status"] == "analysis_required"
-    assert job["version"] == 4
+    assert job["version"] == 5
     assert job["publish_operation"] == "replace_legacy"
     assert job["replace_legacy_authorized"] is True
     assert job["target_note"].endswith("demo.md")
