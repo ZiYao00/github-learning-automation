@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased · Natural Product V2.2 pilot
+
+- Ship an ODS V2.2 editorial preview and the first meaningful image from its pinned README into the configured Obsidian Vault without touching the formal ODS Capture Note.
+- Introduce default `editorial_headline` + `editorial_body` for new, sufficient Capture Notes; retain legacy structured rendering and Minimal Note compatibility.
+- Materialize at most one same-repository README image per note, pinned and Git-blob-verified, stored separately in the reading media layer. No video downloads or media mirroring.
+- Preserve `no_change`, duplicate safety, immutability, user-owned tails, and explicit migration requirements.
+- Add stdlib editorial/first-image policy and lifecycle tests.
+- Preserve README-authored capability/highlight overviews as concise, attributed content; keep on-device/no-cloud/no-telemetry claims together with the README's online exceptions and optional cloud modes.
+- Rename the reading-layer staging folder from `00-Inbox` to `00-待整理`; hide `GitHub-Note/_repo-data` only in Obsidian File Explorer by updating the shared `github-note.css` Extension. Existing assets/links remain intact, with guarded original-file backups in ignored `.runtime`.
+- Safely refresh the ODS V2.2 Vault preview and its checked-in reference text without touching the formal ODS Capture Note.
+
+
 ## 0.4.1 - 2026-10-08
 
 First-use configuration and local-storage topology polish.

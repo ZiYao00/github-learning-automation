@@ -25,6 +25,18 @@ GitHub URL
 
 Research Packet 在 Agent 分析前完成。因此“资料不足”不再等于“收藏失败”。
 
+### V2.2 默认阅读体验（Unreleased）
+
+新的 `sufficient` Job 默认按 **A 版自然产品解读** 生成 Capture Note：Agent 在 `analysis.json` 中填写 `editorial_headline` / `editorial_body`，用简洁、具体、来源可复核的文字解释项目的实际价值与独特能力，而非拼接重复的功能清单。底层 `summary`、`why_save`、`knowledge_map`、`evidence_map` 等字段保留用于检索、追溯与质量验证。资料不足时仍生成 Minimal Note；旧 Job 保持原渲染。
+
+**官方亮点摘要：** 如果 README 明确列出有价值的官方 Features/Highlights/核心模块，新文章先简要归纳这些能力，再用实际场景解释最重要的部分；不强求固定数量。隐私、云端、遥测类说法必须标注为仓库自述，并保留作者披露的联网例外和可选 API 条件。
+
+**目录约定：** 阅读层使用 `00-待整理` 作为待整理文件夹名；`_repo-data` 保持文件存在，但通过共享 `github-note.css` 在 Obsidian 文件树隐藏。已有正式笔记不自动移动。
+
+**图片规则极简：** 只选择固定版本 README 中按展示顺序的第一张非徽章正文图片，支持仓库内可校验 PNG/JPG/GIF/WebP（≤5 MiB）。图片保存于 `notes_root/_repo-data/owner/repo/media`，MD 用 Obsidian WikiLink 引用。首图不适合或不可用时不下载其他图片，也不下载视频；正文仍可正常发布。该单图例外不意味着启用完整媒体采集。
+
+此功能不自动重新生成或迁移旧笔记；相同 Packet + Observation 继续返回 `no_change`，用户自有 `## 我的记录` 始终受到保护。ODS V2.2 试点标准文章存于 `docs/ODS-NATURAL-PRODUCT-V2.2-REFERENCE.md`；详尽行为边界见 `docs/NOTE-SPEC.md`。
+
 ## 第一次使用
 
 需要 Python 3.10+，核心代码没有第三方运行依赖。**不要求先安装全局 CLI**；在项目根目录先运行 onboarding：

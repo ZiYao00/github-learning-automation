@@ -10,6 +10,7 @@ from typing import Any
 
 from .config import Settings
 from .evidence import validate_evidence_map
+from .first_image import materialize_first_image
 from .github_client import SourceBundle, SourceDocument
 from .input_resolver import ResolvedRepository
 from .note_template import (
@@ -455,6 +456,8 @@ def _new_analysis(bundle: SourceBundle) -> dict[str, Any]:
         "source_status": "pending",
         "source_notes": "",
         "content_profile": _content_profile_from_source_profile(bundle.source_profile),
+        "editorial_headline": "",
+        "editorial_body": "",
         "why_save": "",
         "summary": "",
         "what_it_is": "",
@@ -492,6 +495,21 @@ def _handoff(resolved: ResolvedRepository, bundle: SourceBundle) -> str:
 - Repository: {resolved.full_name}
 - Revision: {bundle.revision}
 - Source profile: {bundle.source_profile}
+
+## 新默认：A 版自然产品解读（必须填写 editorial_body）
+
+- editorial_headline：一句明确且有辨识度的中文标题，避免万能标题或未经证实的宣传口号。
+- editorial_body：一篇面向真实读者的独立 Markdown 正文；不要重复 # 主标题、Frontmatter、首图和 Research Packet 元数据，也不要写安装命令清单。
+- 用自然、连贯的叙述解释：它解决什么问题、最有代表性的真实能力及其价值、适用用户、重要限制。场景选 1–3 个最有代表性的即可，不强行凑数。
+- 优先写与其他工具真正不同的、来源明确支持的功能；按实际需要解释前因后果，不套“改变在哪里”之类的固定句式。
+- **官方核心亮点不能遗漏：** 若固定 README 明确列出产品级 Features / Highlights / 核心能力或核心模块，先用简短、忠于原文的概览列表呈现有价值的主项，再从中选最典型的 1–3 个场景深入解释；二者不能互相替代。不要求固定数量，不机械照搬 ODS 的七项能力。
+- **隐私声明保留条件：** 如作者宣称本地运行、不收集遥测、无需订阅或云端，标明属于仓库作者自述；一起说明 README/FAQ 提及的默认联网例外、可选云端与第三方 API、关闭联网方式等重要条件。没有独立实测不保证离线或隐私表现。
+- 将仓库作者声明、可信实例和推导场景区分开来；无实机证据，不得声称已经实际验证成功。
+- 内容因项目类别自适应：软件关注真实使用和能力，库关注 API 能力与适用边界，Agent/Skill 关注流程与可复用资源，知识类关注方法及应用；不强迫知识仓库假装成软件产品。
+- 不复制 README 原文，不堆砌源码、依赖、长表格、无价值术语；允许必要的具体名称与安全风险。
+- **只允许程序从固定 revision 的 README 选择第一张非徽章正文图片**；Agent 不在 editorial_body 中嵌入、下载或引用其他图片/视频。
+- 不输出未经验证的生效政策、当前版本、安全承诺、硬件效果；外部发表前另外执行 Fresh Check。
+- 使用 why_save、summary、what_it_is、capabilities、use_cases、knowledge_map、caveats 等结构字段继续支持 Evidence Map 与未来检索，但不要把它们再当作正文机械拼接，避免重复摘要。
 
 ## 学习目标
 
@@ -713,6 +731,18 @@ def _validate_analysis(job_dir: Path, analysis: dict[str, Any]) -> None:
         raise ValueError("analysis.what_it_is 为空。")
     if not analysis.get("capabilities"):
         raise ValueError("analysis.capabilities 为空。")
+    # New jobs ship with editorial_body; old in-progress v0.4 jobs remain compatible.
+    if "editorial_body" in analysis:
+        editorial = analysis.get("editorial_body")
+        if not isinstance(editorial, str) or not 240 <= len(editorial.strip()) <= 12000:
+            raise ValueError("analysis.editorial_body 必须为 240-12000 字符的自然产品解读正文。")
+        if re.search(r"(?im)^\s*#\s+", editorial):
+            raise ValueError("editorial_body 不得包含重复的 # 主标题。")
+        if re.search(r"(?i)<\s*(?:script|iframe|object|embed|style)\b|!\[\[|!\[[^]]*\]\(", editorial):
+            raise ValueError("editorial_body 不得嵌入自定义 HTML 或图片，首图由程序处理。")
+        headline = str(analysis.get("editorial_headline") or "").strip()
+        if not headline or len(headline) > 110 or "\n" in headline or "\r" in headline:
+            raise ValueError("analysis.editorial_headline 必须是简洁的单行中文标题。")
     profile = str(analysis.get("content_profile") or "").strip()
     if not profile:
         raise ValueError("analysis.content_profile 为空。")
@@ -764,6 +794,17 @@ def _publish_capture_note(
         }
 
     legacy_backup_path: Path | None = None
+    first_image_result: dict[str, str] | None = None
+
+    def render_with_first_image(preserved_tail: str | None = None) -> str:
+        nonlocal first_image_result
+        render_job = job
+        if renderer is render_note and str(analysis.get("editorial_body") or "").strip():
+            first_image_result = materialize_first_image(settings, job_dir, job)
+            if first_image_result.get("status") == "saved":
+                render_job = {**job, "first_readme_image": first_image_result["link"]}
+        return renderer(render_job, analysis, preserved_tail=preserved_tail)
+
     if publish_mode == "upsert" and len(matches) == 1:
         path = matches[0]
         existing = path.read_text(encoding="utf-8")
@@ -798,7 +839,7 @@ def _publish_capture_note(
             preserved_tail = None
         else:
             preserved_tail = extract_preserved_tail(existing)
-        _write_note_atomic(path, renderer(job, analysis, preserved_tail=preserved_tail))
+        _write_note_atomic(path, render_with_first_image(preserved_tail=preserved_tail))
         action = "refreshed"
     else:
         force_new = publish_mode == "new"
@@ -809,7 +850,7 @@ def _publish_capture_note(
             full_name,
             force_new=force_new,
         )
-        _write_note_atomic(path, renderer(job, analysis))
+        _write_note_atomic(path, render_with_first_image())
         action = "created"
 
     result: dict[str, Any] = {
@@ -824,6 +865,10 @@ def _publish_capture_note(
     }
     if legacy_backup_path is not None:
         result["legacy_backup_path"] = str(legacy_backup_path)
+    if first_image_result is not None:
+        result["first_image_status"] = first_image_result["status"]
+        if first_image_result.get("status") == "saved":
+            result["first_image_source"] = first_image_result.get("repository_path") or ""
     return result
 
 

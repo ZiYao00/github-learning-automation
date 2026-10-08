@@ -10,9 +10,9 @@
 4. runtime Job v6 完成 Research Packet staging、hash/schema validation 和 immutable archive。
 5. Packet 成功后才进入 `analysis_required`。
 6. Agent 读取 `source_manifest.json`、`sources/`、`observation.json`、`source_bundle.md` 与 `agent_handoff.md`；默认不全文读取 `resources/`。
-7. Agent 填写 `why_save`、`content_profile`、adaptive map、resource index，并完成 Evidence Map。
+7. Agent 为新 Job 填写 `editorial_headline` / `editorial_body` 作为自然产品解读，仍需填写 `why_save`、`content_profile`、adaptive map、resource index，并完成 Evidence Map。
 8. `source_status=sufficient` 时必须通过 Evidence Map + `coverage_review`；`insufficient` 时仍允许发布 Minimal Capture Note。
-9. `finalize` 返回 `note_ready` 才表示笔记发布完成；相同 Packet + Observation 的已发布笔记可在 `prepare` 阶段直接返回 `no_change`。
+9. `finalize` 返回 `note_ready` 才表示笔记发布完成；新阅读笔记最多从 pinned README 保存并引用一张安全可验证的正文首图；失败退回无图阅读，不影响主流程。相同 Packet + Observation 的已发布笔记可在 `prepare` 阶段直接返回 `no_change`。
 
 ## Resume / restart
 
@@ -37,6 +37,8 @@
 Research Packet 是长期事实底座。Capture Note 或 Derived Artifact 不应重新实现 GitHub Collector。
 
 ### Capture Note
+
+Agent 负责语义层。对新 Job 新增 `editorial_headline` 和 `editorial_body`（A 版自然产品解读 V2.2）；在保留原有 Evidence Map 数据基础上，写自然、准确、短而具体的文章，区分仓库自述与实际运行验证。**README 若有作者明确列出的高价值能力概览，正文应简短保留这些主项，再用典型场景解释重点，不强制固定数量或分类；对隐私、本地、无遥测等声明须保留官方联网例外和云端可选边界。**第一张 README 图片由程序独立处理并在阅读层 `_repo-data` 保存，不由 Agent 下载，也不在正文手工嵌入。
 
 Agent 负责语义层：
 

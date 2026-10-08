@@ -94,6 +94,10 @@ resources/ is an archive surface. Do not read every resource just because it exi
 
 For a sufficient analysis:
 
+- **new Job only:** complete `editorial_headline` and `editorial_body` as a natural, evidence-grounded article (ODS V2.2 pilot);
+- if the README provides an official Features/Highlights overview, preserve its meaningful categories as a short **author-attributed** summary early on; choose specific scenarios for deeper explanation rather than silently dropping the overview;
+- preserve material network / privacy exceptions when summarizing local-only or no-telemetry claims; do not claim independent verification;
+- do not embed images or repeat the article's H1 in `editorial_body`; the renderer manages the first README image;
 - fill why_save;
 - choose/confirm content_profile;
 - build a compact knowledge/project map;
@@ -122,6 +126,8 @@ analysis_status = insufficient
 ~~~
 
 The second case must create a Minimal Capture Note with a visible “待进一步研究” warning.
+
+New sufficient notes include `note_style: natural-product-v2.2`. Their Markdown reads as one coherent article, then appends source/Research Packet links and `## 我的记录`. If the first README non-badge image is a supported, in-snapshot same-repo PNG/JPG/GIF/WebP, the renderer includes that single image from `_repo-data/<owner>/<repo>/media` after verifying size and Git blob SHA. Missing/unsupported/unsafe images do not block the article, and subsequent images are not downloaded. The result reports `first_image_status`.
 
 ## 6. Refresh / no-op
 
@@ -154,6 +160,9 @@ Use --restart-job only with explicit intent; the old runtime remains and becomes
 ## 8. Capture Note checks
 
 Full Capture Note should preserve:
+
+- the new article headline/body (new jobs) or compatible sectioned layout (old jobs);
+- at most one valid pinned README first-image WikiLink (if available);
 
 - repo/revision/packet_id;
 - content_profile;

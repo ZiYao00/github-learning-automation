@@ -207,6 +207,8 @@ def _frontmatter(
     )
     if observation_fingerprint:
         lines.append(f"observation_fingerprint: {_yaml_scalar(observation_fingerprint)}")
+    if str(analysis.get("editorial_body") or "").strip():
+        lines.append('note_style: "natural-product-v2.2"')
     lines.extend(
         [
             "tags:",
@@ -305,12 +307,57 @@ def _source_boundary() -> list[str]:
     ]
 
 
+def _render_editorial_note(
+    job: dict[str, Any],
+    analysis: dict[str, Any],
+    *,
+    preserved_tail: str | None,
+) -> str:
+    """Human-first editorial mode; retain the managed-note identity and user tail."""
+    repo = job["repository"]
+    headline = str(analysis.get("editorial_headline") or "").strip() or str(repo["name"])
+    body = str(analysis["editorial_body"]).strip()
+    parts = [
+        *_frontmatter(job, analysis, analysis_status="sufficient"),
+        "",
+        MANAGED_START,
+        "",
+        f"# {headline}",
+        "",
+        f'<small class="github-note-meta">{_repo_meta(repo)}</small>',
+        "",
+    ]
+    image = str(job.get("first_readme_image") or "").strip()
+    if image:
+        parts.extend([image, ""])
+    parts.extend([body, ""])
+    resources = _resource_index(analysis)
+    if resources:
+        parts.extend([resources, ""])
+    conflicts = _callout_list("risk", "仓库资料存在冲突", analysis.get("source_conflicts"))
+    if conflicts:
+        parts.extend([conflicts, ""])
+    research = _research_entry(job)
+    if research:
+        parts.extend([research, ""])
+    parts.extend(_repository_links(job))
+    warnings = _callout_list("meta", "采集覆盖提醒", job.get("collection_warnings"))
+    if warnings:
+        parts.extend(["", warnings])
+    parts.extend(["", *_source_boundary(), "", MANAGED_END, ""])
+    tail = preserved_tail if preserved_tail is not None else DEFAULT_USER_TAIL
+    parts.append(tail.rstrip())
+    return "\n".join(parts).rstrip() + "\n"
+
+
 def render_note(
     job: dict[str, Any],
     analysis: dict[str, Any],
     *,
     preserved_tail: str | None = None,
 ) -> str:
+    if str(analysis.get("editorial_body") or "").strip():
+        return _render_editorial_note(job, analysis, preserved_tail=preserved_tail)
     repo = job["repository"]
     profile = _content_profile(job, analysis)
     parts = [

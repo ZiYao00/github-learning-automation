@@ -36,12 +36,18 @@
 - v0.3/v5 活动 Job 返回 `legacy_job_restart_required`。
 - `--restart-job` 保留旧 Job 并标记 superseded。
 - Evidence Map 强制覆盖所有 `coverage_required=true` source。
-- Full Capture Note 包含 why_save、adaptive map、resource index、packet_id。
+- 新 sufficient Job 的自然产品解读 `editorial_headline` / `editorial_body` 必填，渲染成一篇连贯文章；旧 Job 兼容原结构，Minimal Note 不变。
+- Full Capture Note 保留结构数据（why_save、adaptive map、resource index、packet_id），即使它们不再被机械拼接成章节。
+- README 只选首张非徽章正文图片，固定 revision Git blob/size 验证后保存一张，放到阅读层 `_repo-data`；首图失败不下载第二张，不影响文章；无图仓库不配图。
+- 仓库 README 有官方功能亮点总览时，正文必须保留有价值的主类别，并以典型场景深化，不按固定七项模板填空；对隐私/无云/遥测等说明保持作者归属和官方联网例外。
+- Obsidian `GitHub-Note/_repo-data` 仅通过共享 `github-note.css` 在文件树隐藏，保留本地文件和引用；待整理目录名为 `00-待整理`，不搬迁旧正式笔记。
 - `source_status=insufficient` 发布 Minimal Capture Note。
 - same Packet + same observation → no_change。
 - create / refresh / legacy migration / duplicate note。
 - finalize 幂等。
 - `## 我的记录` 区域 refresh 后保留。
+- ODS V2.2 样板可在 Obsidian 打开，图片 WikiLink 可见；只做单篇试点，不在没验收前重写其他旧笔记。
+- 新版 `tests/test_editorial_v22.py` 的标准库测试通过；完整 pytest 套件如环境缺少 pytest 则记录未验证，不擅自安装。
 
 ## 代表性真实仓库
 
