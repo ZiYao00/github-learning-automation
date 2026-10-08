@@ -10,11 +10,13 @@ from typing import Any
 
 from .auth import API_ROOT, USER_AGENT, GitHubAuth, resolve_github_auth
 from .source_planner import (
+    MAX_CANDIDATE_FILE_BYTES,
     MAX_FILE_BYTES,
     MAX_TOTAL_SOURCE_BYTES,
     ROOT_MANIFESTS,
     classify_repository,
     plan_additional_sources,
+    plan_archive_resources,
 )
 
 
@@ -33,6 +35,12 @@ class SourceDocument:
     sha: str = ""
     size: int = 0
     truncated: bool = False
+    archive_role: str = "source"
+    analysis_mode: str = "full"
+    authority: str = "repository_authored"
+    coverage_required: bool = True
+    archive_content: str = ""
+    archive_truncated: bool = False
 
 
 @dataclass(frozen=True)
@@ -48,6 +56,8 @@ class SourceBundle:
     readme_path: str = ""
     source_profile: str = "generic"
     sources: tuple[SourceDocument, ...] = ()
+    resources: tuple[SourceDocument, ...] = ()
+    tree_entries: tuple[dict[str, Any], ...] = ()
 
 
 def _headers(auth: GitHubAuth) -> dict[str, str]:
@@ -136,13 +146,35 @@ def _fetch_planned_text(
     kind: str,
     sha: str = "",
     size: int = 0,
+    archive_role: str = "source",
+    analysis_mode: str = "full",
+    authority: str = "repository_authored",
+    coverage_required: bool = True,
+    limit: int = MAX_FILE_BYTES,
 ) -> tuple[SourceDocument | None, str | None]:
     try:
         content = _request_text(_raw_url(full_name, revision, path), auth)
     except GitHubFetchError as exc:
-        return None, f"可选来源 `{path}` 读取失败，已跳过：{exc}"
-    clipped, truncated = _truncate(content)
-    return SourceDocument(path, kind, clipped, sha, size or len(content.encode("utf-8")), truncated), None
+        return None, f"可选来源 {path} 读取失败，已跳过：{exc}"
+    clipped, truncated = _truncate(content, limit)
+    archive_content, archive_truncated = _truncate(content, MAX_CANDIDATE_FILE_BYTES)
+    return (
+        SourceDocument(
+            path=path,
+            kind=kind,
+            content=clipped,
+            sha=sha,
+            size=size or len(content.encode("utf-8")),
+            truncated=truncated,
+            archive_role=archive_role,
+            analysis_mode=analysis_mode,
+            authority=authority,
+            coverage_required=coverage_required,
+            archive_content=archive_content,
+            archive_truncated=archive_truncated,
+        ),
+        None,
+    )
 
 
 def _fit_document_budget(document: SourceDocument, remaining: int) -> SourceDocument | None:
@@ -155,16 +187,26 @@ def _fit_document_budget(document: SourceDocument, remaining: int) -> SourceDocu
     if not clipped:
         return None
     return SourceDocument(
-        document.path,
-        document.kind,
-        clipped,
-        document.sha,
-        document.size,
-        True,
+        path=document.path,
+        kind=document.kind,
+        content=clipped,
+        sha=document.sha,
+        size=document.size,
+        truncated=True,
+        archive_role=document.archive_role,
+        analysis_mode=document.analysis_mode,
+        authority=document.authority,
+        coverage_required=document.coverage_required,
+        archive_content=document.archive_content,
+        archive_truncated=document.archive_truncated,
     )
 
 
-def _root_entries_from_tree(tree_entries: list[dict[str, Any]], full_name: str, revision: str) -> list[dict[str, Any]]:
+def _root_entries_from_tree(
+    tree_entries: list[dict[str, Any]],
+    full_name: str,
+    revision: str,
+) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
     for item in tree_entries:
         path = str(item.get("path") or "")
@@ -184,6 +226,24 @@ def _root_entries_from_tree(tree_entries: list[dict[str, Any]], full_name: str, 
     return sorted(result, key=lambda item: str(item.get("name") or "").casefold())
 
 
+def _release_observation(release: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not release:
+        return None
+    body = str(release.get("body") or "")
+    body_clipped, body_truncated = _truncate(body, 50_000)
+    return {
+        "kind": "latest_release",
+        "authority": "platform_metadata",
+        "tag_name": release.get("tag_name") or "",
+        "name": release.get("name") or "",
+        "published_at": release.get("published_at") or "",
+        "html_url": release.get("html_url") or "",
+        "body": body_clipped,
+        "body_original_bytes": len(body.encode("utf-8")),
+        "body_truncated": body_truncated,
+    }
+
+
 def fetch_repository_sources(full_name: str, auth: GitHubAuth | None = None) -> SourceBundle:
     auth = auth or resolve_github_auth()
     warnings: list[str] = []
@@ -192,7 +252,7 @@ def fetch_repository_sources(full_name: str, auth: GitHubAuth | None = None) -> 
     if bool(repo.get("private")):
         raise GitHubFetchError(
             "private_repository_blocked",
-            "当前工作流默认拒绝采集私有仓库，避免把私有资料意外写入 Obsidian 或 runtime。",
+            "当前工作流默认拒绝采集私有仓库，避免把私有资料意外写入 Obsidian、runtime 或 Research Packet。",
         )
 
     default_branch = str(repo.get("default_branch") or "main")
@@ -225,7 +285,7 @@ def fetch_repository_sources(full_name: str, auth: GitHubAuth | None = None) -> 
         tree_entries = tree_payload.get("tree") if isinstance(tree_payload, dict) else []
         tree_entries = tree_entries if isinstance(tree_entries, list) else []
         if isinstance(tree_payload, dict) and tree_payload.get("truncated"):
-            warnings.append("Git tree 返回 truncated=true；Source Planner 只基于本次可见路径选择补充来源。")
+            warnings.append("Git tree 返回 truncated=true；Source Planner 与 Research Packet tree index 只基于本次可见路径。")
     except GitHubFetchError as exc:
         tree_entries = []
         warnings.append(f"递归 Git tree 读取失败，Source Planner 降级为根目录资料：{exc}")
@@ -252,6 +312,7 @@ def fetch_repository_sources(full_name: str, auth: GitHubAuth | None = None) -> 
     }
     manifests: dict[str, str] = {}
     sources: list[SourceDocument] = []
+    resources: list[SourceDocument] = []
     remaining_budget = MAX_TOTAL_SOURCE_BYTES
 
     if readme:
@@ -259,13 +320,16 @@ def fetch_repository_sources(full_name: str, auth: GitHubAuth | None = None) -> 
             readme_full or readme,
             min(120_000, remaining_budget),
         )
+        readme_archive, readme_archive_truncated = _truncate(readme_full or readme, MAX_CANDIDATE_FILE_BYTES)
         readme_document = SourceDocument(
-            readme_path or "README.md",
-            "readme",
-            readme_clipped,
-            readme_sha,
-            len((readme_full or readme).encode("utf-8")),
-            readme_truncated,
+            path=readme_path or "README.md",
+            kind="readme",
+            content=readme_clipped,
+            sha=readme_sha,
+            size=len((readme_full or readme).encode("utf-8")),
+            truncated=readme_truncated,
+            archive_content=readme_archive,
+            archive_truncated=readme_archive_truncated,
         )
         sources.append(readme_document)
         remaining_budget -= len(readme_document.content.encode("utf-8"))
@@ -283,6 +347,7 @@ def fetch_repository_sources(full_name: str, auth: GitHubAuth | None = None) -> 
             kind="manifest",
             sha=str(entry.get("sha") or ""),
             size=int(entry.get("size") or 0),
+            coverage_required=False,
         )
         if document is not None:
             fitted = _fit_document_budget(document, remaining_budget)
@@ -292,16 +357,46 @@ def fetch_repository_sources(full_name: str, auth: GitHubAuth | None = None) -> 
                 manifest_paths.add(name)
                 remaining_budget -= len(fitted.content.encode("utf-8"))
             else:
-                warnings.append(f"来源总预算已用尽，跳过 manifest：{name}")
+                warnings.append(f"分析来源预算已用尽，跳过 manifest：{name}")
         if warning:
             warnings.append(warning)
 
     source_profile = classify_repository(tree_entries)
-    for planned in plan_additional_sources(
+    planned_sources = plan_additional_sources(
         tree_entries,
         readme_path=readme_path,
         readme_content=readme_full or readme,
         manifest_paths=manifest_paths,
+    )
+    for planned in planned_sources:
+        document, warning = _fetch_planned_text(
+            full_name,
+            revision,
+            planned.path,
+            auth,
+            kind=planned.kind,
+            sha=planned.sha,
+            size=planned.size,
+            archive_role=planned.archive_role,
+            analysis_mode=planned.analysis_mode,
+            authority=planned.authority,
+            coverage_required=planned.coverage_required,
+        )
+        if document is not None:
+            fitted = _fit_document_budget(document, remaining_budget)
+            if fitted is not None:
+                sources.append(fitted)
+                remaining_budget -= len(fitted.content.encode("utf-8"))
+            else:
+                warnings.append(f"分析来源预算已用尽，跳过补充来源：{planned.path}")
+        if warning:
+            warnings.append(warning)
+
+    selected_paths = {document.path for document in sources}
+    for planned in plan_archive_resources(
+        tree_entries,
+        source_profile=source_profile,
+        selected_paths=selected_paths,
     ):
         document, warning = _fetch_planned_text(
             full_name,
@@ -311,42 +406,26 @@ def fetch_repository_sources(full_name: str, auth: GitHubAuth | None = None) -> 
             kind=planned.kind,
             sha=planned.sha,
             size=planned.size,
+            archive_role=planned.archive_role,
+            analysis_mode=planned.analysis_mode,
+            authority=planned.authority,
+            coverage_required=planned.coverage_required,
+            limit=MAX_CANDIDATE_FILE_BYTES,
         )
         if document is not None:
-            fitted = _fit_document_budget(document, remaining_budget)
-            if fitted is not None:
-                sources.append(fitted)
-                remaining_budget -= len(fitted.content.encode("utf-8"))
-            else:
-                warnings.append(f"来源总预算已用尽，跳过补充来源：{planned.path}")
+            resources.append(document)
         if warning:
             warnings.append(warning)
 
     try:
         release = _request_json(f"{API_ROOT}/repos/{full_name}/releases/latest", auth)
-        latest_release = release if isinstance(release, dict) else None
-        if latest_release:
-            body = str(latest_release.get("body") or "")
-            body_clipped, body_truncated = _truncate(body, min(50_000, max(remaining_budget, 0)))
-            if body_clipped:
-                release_document = SourceDocument(
-                    "@latest_release",
-                    "release",
-                    body_clipped,
-                    "",
-                    len(body.encode("utf-8")),
-                    body_truncated,
-                )
-                sources.append(release_document)
-                remaining_budget -= len(release_document.content.encode("utf-8"))
-            elif body and remaining_budget <= 0:
-                warnings.append("来源总预算已用尽，Latest Release 仅保留 metadata，正文未进入来源包。")
+        latest_release = _release_observation(release if isinstance(release, dict) else None)
     except GitHubFetchError as exc:
         if exc.status == 404:
             latest_release = None
         else:
             latest_release = None
-            warnings.append(f"Latest Release 读取失败，已按可选来源跳过：{exc}")
+            warnings.append(f"Latest Release 读取失败，已按 Observation 跳过：{exc}")
 
     return SourceBundle(
         repository=repo,
@@ -360,4 +439,6 @@ def fetch_repository_sources(full_name: str, auth: GitHubAuth | None = None) -> 
         readme_path=readme_path,
         source_profile=source_profile,
         sources=tuple(sources),
+        resources=tuple(resources),
+        tree_entries=tuple(tree_entries),
     )

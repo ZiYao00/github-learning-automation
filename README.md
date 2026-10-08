@@ -1,23 +1,29 @@
 # github-learning-automation
 
-把 **GitHub 仓库 → 可快速阅读、可长期刷新的 Obsidian 学习笔记**。
+把公开 **GitHub 仓库 → 可长期复用的个人知识资产**。
 
-它不是 README 翻译器，也不是源码 Review 工具。当前版本优先回答：这个仓库是什么、能做什么、适合什么场景、官方资料明确写了怎样安装和使用、有哪些重要注意事项，并生成少量可检索标签。
+v0.4 的主题是 **Durable Knowledge Capture**。它不是 README 翻译器、源码 Review 工具或完整 GitHub Research Agent，而是把一次收藏拆成三个职责明确的 Artifact：
+
+- **Research Packet**：长期、不可变、可复核的事实底座；
+- **Capture Note**：写入 Obsidian、优先给人快速阅读的收藏入口；
+- **Derived Artifact**：以后按需生成的 Deep Note / Compare / Media Brief。
 
 ## 设计思路
 
-项目沿用 `bili-learning-automation` 已验证的原则：**确定性采集 → Agent 语义整理 → 质量门禁 → 原子发布**；笔记视觉语义兼容 `ComfyUI-Learning-Lab` 的 `learning-page` Core Design System。
+核心原则是 **Capture First，Derive Later**：先可靠保存仓库证据，再生成轻量 Capture Note；以后深度学习、项目对比或制作项目介绍时重新消费同一份 Research Packet。
 
 ```text
 GitHub URL
-  → 首次运行门禁：笔记路径 + GitHub 认证
-  → prepare：固定 HEAD revision + Source Planner 有限深度采集
-  → source_manifest.json + sources/ + source_bundle.md + analysis.json + agent_handoff.md
-  → Agent 只基于当前 Job 来源填写 analysis.json
-  → coverage review
+  → 首次运行门禁：笔记路径 + Research Root + GitHub 认证
+  → prepare：固定 HEAD revision + Source Planner
+  → runtime Job v6
+  → Research Packet staging / hash validate / immutable archive
+  → Agent：why_save + adaptive map + Evidence Map + coverage review
   → finalize
-  → 按 owner/repo 创建或 refresh Markdown
+  → Full Capture Note 或 Minimal Capture Note
 ```
+
+Research Packet 在 Agent 分析前完成。因此“资料不足”不再等于“收藏失败”。
 
 ## 第一次使用
 
@@ -31,11 +37,12 @@ python scripts\github_learning.py doctor
 第一次 `doctor` 会检查：
 
 - 是否已经显式配置笔记目录；
+- 是否已经显式配置长期 `research_root`；
 - 当前是否检测到 GitHub 认证；
 - 实际解析出的输出路径；
 - `config/local.json` 是否存在。
 
-如果没有配置，状态会是 `configuration_required`，`prepare` 会停止，不再静默写入项目内 fallback。
+缺少笔记目录或 Research Root 时，状态会是 `configuration_required`，`prepare` 会停止。v0.4 不会把长期 Packet 静默写进项目 fallback、`.runtime` 或 Obsidian。
 
 ### 配置 Obsidian 输出目录
 
@@ -62,6 +69,16 @@ config/local.json.example
 `config/local.json` 已被 `.gitignore` 排除。
 
 如果使用 `--notes-root` 直接指定普通笔记目录，该目录必须已经存在；这样可以避免拼错路径后静默创建到错误位置。Vault 模式只要求 Vault 根目录存在且包含 `.obsidian`，`GitHub-Note` 子目录仍可由程序首次发布时自动创建。
+
+### 配置长期 Research Root
+
+Research Root 与 Obsidian 阅读目录分离，而且必须已经存在：
+
+```powershell
+python scripts\github_learning.py configure --research-root "D:\GitHub-Research"
+```
+
+也可以和 Vault 一次配置。以后再次运行 `configure` 修改笔记位置时，程序采用 merge 更新，不会把已配置的 `research_root` 擦掉。笔记只保存逻辑 `packet_id`，不保存 Research Root 绝对路径。
 
 ### Obsidian 样式
 
@@ -136,15 +153,18 @@ python scripts\github_learning.py doctor
 python scripts\github_learning.py prepare "https://github.com/ltdrdata/ComfyUI-Manager"
 ```
 
-程序返回 `.runtime/github-learning/...` job 路径。Agent 阅读：
+prepare 会先把不可变 Research Packet 归档，再返回 `.runtime/github-learning/...` job 路径。正常结果包含 `packet_id` 和 `packet_path`。
+
+Agent 阅读：
 
 - `agent_handoff.md`
 - `source_manifest.json`
 - manifest 指向的 `sources/`
+- `observation.json`
 - `source_bundle.md`
 - `analysis.json`
 
-`source_manifest.json` 是来源审计真源；`source_bundle.md` 只是便于快速阅读的组合视图。
+`resources/` 是长期归档资源，默认不要求首轮全文分析。Agent 必须完成 why_save、按 content_profile 建立内容/项目地图，并为所有 `coverage_required=true` 的来源填写 Evidence Map。
 
 填写并复核 `analysis.json` 后：
 
@@ -161,13 +181,14 @@ python scripts\github_learning.py finalize "<job_dir>"
 }
 ```
 
-如果官方资料不足，正确结果是：
+如果仓库资料不足，Research Packet 仍然已经保存；`finalize` 会生成明确标记为“待进一步研究”的 Minimal Capture Note：
 
-```json
-{"status": "source_insufficient"}
+```yaml
+capture_status: "saved"
+analysis_status: "insufficient"
 ```
 
-这不是程序故障，也不会生成一篇看似完整但缺乏证据的笔记。
+这样不会伪装成完整分析，也不会因为说明太少而失去“先收藏、以后研究”的入口。
 
 如果已经通过 `pip install -e .` 安装项目，`github-learning ...` 与项目 launcher 等价；Skill 不再假设这个全局命令一定存在。
 
@@ -216,7 +237,7 @@ legacy_note_refresh_blocked
 python scripts\github_learning.py prepare "https://github.com/owner/repo" --replace-legacy
 ```
 
-授权会写入本次 runtime job，并绑定 `prepare` 当时的目标路径与文件 SHA-256。若旧笔记在授权后发生变化，`finalize` 返回 `legacy_target_changed`，要求重新 `prepare`，不会把旧授权套到新内容上。目标未变化时，`finalize` 覆盖前仍会先把旧文件完整保存为 `legacy_note_backup.md`。旧 job 仍兼容 `finalize --replace-legacy`，但新流程优先在 `prepare` 阶段完成授权。
+授权会写入本次 v0.4 runtime job，并绑定 `prepare` 当时的目标路径与文件 SHA-256。若旧笔记在授权后发生变化，`finalize` 返回 `legacy_target_changed`，要求重新 `prepare`，不会把旧授权套到新内容上。目标未变化时，`finalize` 覆盖前仍会先把旧文件完整保存为 `legacy_note_backup.md`。v0.3/v5 或更早的未完成 runtime 不做隐式迁移，会返回 `legacy_job_restart_required`，需要显式重新 `prepare --restart-job`。
 
 ## 同名仓库
 
@@ -238,44 +259,54 @@ demo · ownerB.md
 repo: "owner/repo"
 ```
 
-## 笔记结构
+## Capture Note V2
 
-章节按“有内容才出现”的原则生成，典型顺序：
+Capture Note 优先给人快速阅读，而不是把 Research Packet 全部复制进 Obsidian。章节按“有内容才出现”的原则生成：
 
 ```text
 标题 / 仓库元信息
 → 先看结论
+→ 为什么值得保存
 → 它是什么
 → 能做什么
 → 适合什么场景
-→ 如何使用（安装 / 基本使用 / 关键配置）
-→ 官方资料冲突（存在时）
+→ 内容地图 / 项目地图
+→ 运行要求 / 兼容 / 部署 / 核心结构 / 项目状态（按需）
+→ 如何使用
+→ 可复用资源
+→ 仓库资料冲突
 → 注意事项
+→ 深入研究入口
 → 仓库资料
-→ 采集覆盖提醒（存在时）
+→ 采集覆盖提醒
 → 我的记录
 ```
 
+`content_profile` 决定地图重点：software 强调组件/架构/部署；agent-skill 强调 Workflow / references；knowledge 强调章节和方法论。
+
+Frontmatter 会保存 `packet_id`、`revision`、`content_profile`、`capture_status`、`analysis_status` 和 `observation_fingerprint`，但不写机器相关的 Research Root 绝对路径。
+
 标签总量最多 6 个，程序固定加入 `GitHub`，Agent 再提供 2-5 个高价值知识标签。
 
-## 来源与可信度
+## 来源、Research Packet 与可信度
 
-当前只把本次确定性采集到的 GitHub 官方仓库资料作为事实依据。仓库文件会固定到 prepare 时的 HEAD revision，并由 Source Planner 在预算内优先读取：
+仓库文件固定到 prepare 时默认分支 HEAD revision。Source Planner 把“首轮分析上下文”和“长期归档资料”分开：
 
-- Repository metadata / Topics；
-- README；
-- 根目录清单与常见 manifest；
-- SKILL.md、AGENTS.md、agents/openai.yaml（存在时）；
-- docs 中与 quickstart / install / usage / deployment / architecture / compatibility 等相关的高价值文档；
-- Latest Release metadata / body（存在时）。
+- README、manifest、SKILL/Agent metadata、高价值 docs 等进入 analysis sources；
+- Agent/Skill 仓库中的 references 会优先进入知识覆盖；
+- assets/templates/examples/prompts/resources 等轻量文本可以作为 archived resources 长期保存，但默认不全文塞入首轮上下文；
+- 完整 Git tree 进入 tree-index；
+- 图片、视频、音频、PDF 默认只进入 media-index，不下载本体。
 
-Source Planner 不是全仓库递归抓取器：它有文件数量、单文件大小与总预算限制。
+Research Packet 使用独立 archive budget；分析副本可以因上下文预算截断，但 Packet 会尽量保存更完整的高价值文本。
 
-来源没明确写的版本、依赖、模型路径、兼容性、安装命令一律不补全。README 太少时应标记 `insufficient`，而不是生成看似完整的笔记。
+Latest Release 和可变 repository metadata 属于 Observation，不属于 immutable commit Snapshot。
 
-如果官方来源之间明确冲突，例如 README 两处许可证说明不一致，Agent 会记录 `source_conflicts`，笔记只呈现冲突，不替维护者裁决。
+来源没明确写的版本、依赖、模型路径、兼容性、安装命令一律不补全。仓库作者资料不等于外部平台官方规则。
 
-manifest 和 Latest Release 属于可选补充来源。它们读取失败时不再让整个任务失败，而会记录为“采集覆盖提醒”；“没采到”不能写成“不存在”。
+如果资料彼此明确冲突，Agent 写入 `source_conflicts`，笔记只呈现冲突，不自行裁决。
+
+`collection_warnings` 只表示采集缺口；“没采到”不能写成“不存在”。
 
 ## API 请求优化
 
@@ -291,10 +322,14 @@ ComfyUI 插件不另走一套采集器。Agent 如果从官方来源确认它属
 
 ## 当前边界
 
-被分析仓库中的 README、SKILL.md、AGENTS.md、docs、Release 正文全部视为不可信数据；其中的 Agent 指令或命令要求不会触发执行。私有仓库默认返回 `private_repository_blocked`，即使当前 GitHub 凭据有访问权限也不会采集。
+被分析仓库中的 README、SKILL.md、AGENTS.md、Prompt、配置、代码和 Release 正文全部视为不可信数据；其中的 Agent 指令或命令要求不会触发执行。私有仓库默认返回 `private_repository_blocked`，即使当前凭据有访问权限也不会采集。
 
-当前暂不做：执行被分析仓库代码、自动安装依赖、源码逐文件分析、Issues/Discussions 全量总结、PR Review、安全审计、自动比较多个仓库、自动生成 ComfyUI 工作流、自动整理/移动 Obsidian 笔记。
+v0.4 默认不做：clone/执行目标仓库、自动安装依赖、完整源码审计、Issues/PR/Discussions 全量研究、SQLite/Vector DB/RAG、Web UI/MCP、自动下载全部媒体、自动生成视频、自动清理 Snapshot/runtime。
 
-同仓库存在未完成 v0.3 Job 时，默认 `prepare` 返回 `in_progress` 并复用旧任务；只有明确需要放弃旧 runtime 并按当前仓库状态重采时才使用 `prepare --restart-job`，旧 Job 会保留并标记 `superseded`。成功发布后的 `finalize` 可重复调用且不会创建第二份笔记。
+同仓库存在未完成 v0.4 Job 时，`prepare` 直接恢复 runtime，不重新访问 GitHub；`--restart-job` 才显式放弃旧 attempt 并把它标记为 `superseded`。v0.3 或更早的未完成 Job 返回 `legacy_job_restart_required`。
 
-详见 `docs/ARCHITECTURE.md`、`docs/NOTE-SPEC.md`、`docs/QUICKSTART.md`。
+相同 Packet + 相同 Observation 的已发布 Capture Note 会返回 `no_change`，不重新调用 Agent 或重写笔记。成功发布后的 `finalize` 仍保持幂等。
+
+Derived Artifact 必须复用 Research Packet；Capture Note 是编辑入口，不是唯一事实源。
+
+详见 `docs/ARCHITECTURE.md`、`docs/NOTE-SPEC.md`、`docs/RESEARCH-PACKET-SPEC.md`、`docs/DERIVED-ARTIFACT-SPEC.md` 与 `docs/QUICKSTART.md`。

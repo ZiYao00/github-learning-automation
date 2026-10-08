@@ -25,6 +25,8 @@ class Settings:
     vault_root: Path | None = None
     notes_subdir: Path | None = None
     notes_source: str = "fallback"
+    research_root: Path | None = None
+    research_source: str = "unconfigured"
 
 
 def _safe_relative(value: str) -> Path:
@@ -65,7 +67,7 @@ def _load_local(project_root: Path) -> tuple[Path, dict[str, str]]:
         raise ConfigurationError("local_config_invalid_json", f"config/local.json 不是有效 JSON：{path}") from exc
     if not isinstance(raw, dict):
         raise ConfigurationError("local_config_invalid_type", "config/local.json 必须是 JSON 对象。")
-    allowed = {"notes_root", "vault_root", "notes_subdir"}
+    allowed = {"notes_root", "vault_root", "notes_subdir", "research_root"}
     unknown = sorted(set(raw) - allowed)
     if unknown:
         raise ConfigurationError("local_config_unknown_key", "config/local.json 存在未知字段：" + ", ".join(unknown))
@@ -81,12 +83,38 @@ def _load_local(project_root: Path) -> tuple[Path, dict[str, str]]:
     return path, values
 
 
+def _resolve_research_root(project_root: Path, local: dict[str, str]) -> tuple[Path | None, str]:
+    env_research = os.environ.get("GITHUB_LEARNING_RESEARCH_ROOT")
+    if env_research:
+        return (
+            _require_directory(
+                _resolve_path(project_root, env_research),
+                code="research_root_missing",
+                label="Research 目录",
+            ),
+            "environment",
+        )
+    if local.get("research_root"):
+        return (
+            _require_directory(
+                _resolve_path(project_root, local["research_root"]),
+                code="research_root_missing",
+                label="Research 目录",
+            ),
+            "local",
+        )
+    return None, "unconfigured"
+
+
 def load_settings(project_root: Path) -> Settings:
     project_root = project_root.resolve()
     local_path, local = _load_local(project_root)
+    research_root, research_source = _resolve_research_root(project_root, local)
     env_root = os.environ.get("GITHUB_LEARNING_NOTES_ROOT")
     env_vault = os.environ.get("GITHUB_LEARNING_VAULT_ROOT")
     env_subdir = os.environ.get("GITHUB_LEARNING_NOTES_SUBDIR")
+    runtime_root = project_root / ".runtime" / "github-learning"
+
     if env_root and (env_vault or env_subdir):
         raise ConfigurationError(
             "environment_notes_conflict",
@@ -104,19 +132,30 @@ def load_settings(project_root: Path) -> Settings:
             code="notes_root_missing",
             label="笔记目录",
         )
-        return Settings(project_root, notes_root, project_root / ".runtime" / "github-learning", local_path, False, notes_source="environment_notes_root")
+        return Settings(
+            project_root,
+            notes_root,
+            runtime_root,
+            local_path,
+            False,
+            notes_source="environment_notes_root",
+            research_root=research_root,
+            research_source=research_source,
+        )
     if env_vault:
         vault_root = _require_vault(_resolve_path(project_root, env_vault))
         notes_subdir = _safe_relative(env_subdir or str(DEFAULT_NOTES_SUBDIR))
         return Settings(
             project_root,
             vault_root / notes_subdir,
-            project_root / ".runtime" / "github-learning",
+            runtime_root,
             local_path,
             False,
             vault_root,
             notes_subdir,
             "environment_vault",
+            research_root,
+            research_source,
         )
     if local.get("notes_root"):
         notes_root = _require_directory(
@@ -124,48 +163,89 @@ def load_settings(project_root: Path) -> Settings:
             code="notes_root_missing",
             label="笔记目录",
         )
-        return Settings(project_root, notes_root, project_root / ".runtime" / "github-learning", local_path, False, notes_source="local_notes_root")
+        return Settings(
+            project_root,
+            notes_root,
+            runtime_root,
+            local_path,
+            False,
+            notes_source="local_notes_root",
+            research_root=research_root,
+            research_source=research_source,
+        )
     if local.get("vault_root"):
         vault_root = _require_vault(_resolve_path(project_root, local["vault_root"]))
         notes_subdir = _safe_relative(local.get("notes_subdir", str(DEFAULT_NOTES_SUBDIR)))
         return Settings(
             project_root,
             vault_root / notes_subdir,
-            project_root / ".runtime" / "github-learning",
+            runtime_root,
             local_path,
             False,
             vault_root,
             notes_subdir,
             "local_vault",
+            research_root,
+            research_source,
         )
 
     notes_root = project_root / "notes" / "github" / "00-Inbox"
-    return Settings(project_root, notes_root, project_root / ".runtime" / "github-learning", local_path, True)
+    return Settings(
+        project_root,
+        notes_root,
+        runtime_root,
+        local_path,
+        True,
+        research_root=research_root,
+        research_source=research_source,
+    )
+
+
+def _write_local_atomic(path: Path, payload: dict[str, str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp = path.with_suffix(path.suffix + ".tmp")
+    temp.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    temp.replace(path)
 
 
 def configure_notes(
     project_root: Path,
     *,
     vault_root: Path | None = None,
-    notes_subdir: str = str(DEFAULT_NOTES_SUBDIR),
+    notes_subdir: str | None = None,
     notes_root: Path | None = None,
+    research_root: Path | None = None,
 ) -> Path:
     project_root = project_root.resolve()
     if vault_root is not None and notes_root is not None:
         raise ConfigurationError("configure_conflict", "vault_root 与 notes_root 只能选择一种配置方式。")
-    if vault_root is None and notes_root is None:
-        raise ConfigurationError("configure_missing_target", "必须提供 vault_root 或 notes_root。")
+    if vault_root is None and notes_root is None and research_root is None:
+        raise ConfigurationError("configure_missing_target", "必须提供 vault_root、notes_root 或 research_root。")
+
+    path, current = _load_local(project_root)
+    payload = dict(current)
 
     if vault_root is not None:
-        vault_root = _require_vault(vault_root)
-        normalized_subdir = _safe_relative(notes_subdir)
-        payload = {"vault_root": str(vault_root), "notes_subdir": str(normalized_subdir)}
-    else:
-        assert notes_root is not None
+        validated_vault = _require_vault(vault_root)
+        normalized_subdir = _safe_relative(notes_subdir or str(DEFAULT_NOTES_SUBDIR))
+        payload.pop("notes_root", None)
+        payload["vault_root"] = str(validated_vault)
+        payload["notes_subdir"] = str(normalized_subdir)
+    elif notes_root is not None:
         validated_root = _require_directory(notes_root, code="notes_root_missing", label="笔记目录")
-        payload = {"notes_root": str(validated_root)}
+        payload.pop("vault_root", None)
+        payload.pop("notes_subdir", None)
+        payload["notes_root"] = str(validated_root)
+    elif notes_subdir is not None:
+        raise ConfigurationError("configure_subdir_without_vault", "仅更新 notes_subdir 时必须同时提供 vault_root。")
 
-    path = project_root / LOCAL_CONFIG
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    if research_root is not None:
+        validated_research = _require_directory(
+            research_root,
+            code="research_root_missing",
+            label="Research 目录",
+        )
+        payload["research_root"] = str(validated_research)
+
+    _write_local_atomic(path, payload)
     return path

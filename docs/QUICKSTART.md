@@ -1,118 +1,230 @@
-# 快速测试
+# Quickstart & Regression
 
-## 0. 首次运行门禁
+## 1. Configure
 
-```powershell
-python scripts\github_learning.py doctor
-```
+v0.4 requires both a note destination and a long-term Research Root.
 
-全新环境应明确返回 `configuration_required`，而不是 `ok`；此时 `prepare` 不能创建 runtime job。
-
-配置 Vault：
-
-```powershell
+~~~powershell
 python scripts\github_learning.py configure --vault-root "D:\Notes\MyVault" --notes-subdir "GitHub-Note"
-```
+~~~
 
-再次 `doctor`：
+~~~powershell
+python scripts\github_learning.py configure --research-root "D:\GitHub-Research"
+~~~
 
-- 已登录 GitHub CLI / 已有 Token → `ready`；
-- 未登录 → `auth_recommended`。
+Research Root must already exist.
 
-未登录时，默认 `prepare` 应停止；只有显式 `--allow-anonymous` 才允许匿名采集。
+configure uses merge updates: changing the note destination later must not erase research_root.
 
-## 1. 内容回归
+## 2. Doctor
 
-推荐依次使用：
+~~~powershell
+python scripts\github_learning.py doctor
+~~~
 
-1. 标准 ComfyUI 插件；
-2. README 较长的大型 ComfyUI 项目；
-3. 普通命令行软件；
-4. AI Agent / 自动化项目；
-5. README 很少的小仓库。
+Expected ready state requires:
 
-验收重点：30 秒内能否知道“是什么 / 有什么用”，安装命令是否严格来自官方来源，标签是否不过量，资料不足时是否返回 `source_insufficient` 而不是 error。
+- explicit notes configuration;
+- explicit research_root;
+- GitHub authentication.
 
-## 2. Refresh 回归
+Without authentication, use gh auth login, or explicitly choose --allow-anonymous for a prepare.
 
-同一个仓库连续转换两次：
+## 3. Prepare
 
-```powershell
+~~~powershell
 python scripts\github_learning.py prepare "https://github.com/owner/repo"
-```
+~~~
 
-第二次默认应刷新同一篇笔记，`finalize` 返回：
+Expected first-run result:
 
-```json
-{
-  "status": "note_ready",
-  "publish_action": "refreshed"
-}
-```
+~~~text
+analysis_required
+packet_status = packet_archived | packet_reused
+packet_id = owner/repo@revision
+~~~
 
-不应自动生成 `repo（2）.md`。
+Before Agent analysis, verify:
 
-在笔记 `## 我的记录` 下增加一行人工内容，再 refresh；人工内容必须保留。
+- runtime job version = 6;
+- packet.json exists under research_root;
+- repository/tree/media core hashes validate;
+- source/resource hashes validate;
+- Latest Release lives in repo observations, not inside immutable snapshot;
+- failed/partial staging is not silently deleted.
 
-如果确实需要第二份独立版本，显式使用：
+## 4. Agent analysis
 
-```powershell
-python scripts\github_learning.py prepare "https://github.com/owner/repo" --new-note
-```
+Read:
 
-## 3. 同名仓库与旧版保护
+- agent_handoff.md
+- source_manifest.json
+- manifest sources/
+- observation.json
+- source_bundle.md
+- analysis.json
 
-分别测试 `ownerA/demo` 与 `ownerB/demo`。正常文件名应类似：
+resources/ is an archive surface. Do not read every resource just because it exists.
 
-```text
-demo.md
-demo · ownerB.md
-```
+For a sufficient analysis:
 
-再次学习第一次测试遗留的 v0.1 笔记时，`prepare` 应在 GitHub 采集前返回 `legacy_note_refresh_blocked`，且不创建 runtime job。确认允许迁移后才重新执行：
+- fill why_save;
+- choose/confirm content_profile;
+- build a compact knowledge/project map;
+- fill resource_index only with supported purpose claims;
+- complete every coverage_required Evidence Map entry;
+- set coverage_review.status=passed only after source recheck.
 
-```powershell
-python scripts\github_learning.py prepare "https://github.com/owner/demo" --replace-legacy
-```
+## 5. Finalize
 
-授权后的新 job 会记录目标路径与 SHA-256。若旧笔记在 `prepare` 之后发生变化，`finalize` 应返回 `legacy_target_changed`，不得覆盖；重新 `prepare --replace-legacy` 后再次确认。目标未变化时，`finalize` 必须先把旧文件原文保存到该 runtime job 的 `legacy_note_backup.md`，再覆盖正式笔记。旧 job 仍可兼容 `finalize --replace-legacy`。
+~~~powershell
+python scripts\github_learning.py finalize "<job_dir>"
+~~~
 
-## 4. Obsidian 样式
+Sufficient source:
 
-本项目不再携带共享 CSS 副本。先查看 `config/obsidian-style.json`，再从共享仓库安装所需文件：
+~~~text
+note_ready
+analysis_status = sufficient
+~~~
 
-```text
-https://github.com/ZiYao00/obsidian-learning-snippets
-```
+Insufficient source:
 
-需要：
+~~~text
+note_ready
+analysis_status = insufficient
+~~~
 
-- `snippets/learning-lab.css`
-- `snippets/github-note.css`
+The second case must create a Minimal Capture Note with a visible “待进一步研究” warning.
 
-把它们放到 `<vault_root>\.obsidian\snippets\` 顶层，并在 Obsidian「设置 → 外观 → CSS 代码片段」中同时启用 `learning-lab` 与 `github-note`。
+## 6. Refresh / no-op
 
-GitHub 笔记不需要 `video-note.css`。生成 Frontmatter 必须同时包含 `learning-page` 与 `github-note`。
+After publishing a v0.4 Capture Note, prepare the exact same revision + observation again.
 
-## 5. v0.3 Source Engine 回归
+Expected:
 
-至少准备五类公开仓库：Python、Node/Web、Docker、Agent/Skill、README 极少的小仓库。
+~~~text
+no_change
+~~~
 
-逐项检查：
+No Agent analysis and no managed-note rewrite should occur.
 
-- `prepare` 返回 `revision`，且 `source_manifest.json` 中记录同一 revision；
-- Agent/Skill 仓库能优先采到 `SKILL.md` / `AGENTS.md` / `agents/openai.yaml` 等存在的高价值来源；vendor/third-party 内同名文件不得导致误分类；
-- README 明确链接的 quickstart / support matrix / install / architecture / validation / compatibility 等官方文档应优先于未链接的深层配置或 Compose 文件，并继续受预算限制；
-- manifest 的 `saved_as` 文件真实存在，truncated 与大小信息可信；
-- 仓库文本包含 Prompt Injection 语句时，只作为数据保留，不触发执行；
-- private repository 返回 `private_repository_blocked`；
-- 同仓库未完成 Job 再次 prepare 返回 `in_progress`；显式 `--restart-job` 后旧 Job 标记 `superseded`，新 Job 成为唯一活动任务；
-- 同一 published Job 连续 finalize 两次，第二次返回 `idempotent=true`，且正式笔记没有增加第二份。
+When revision changes, a new immutable Packet is created and the same Capture Note is refreshed.
 
-Agent Skill 同步检查：
+## 7. Resume
 
-```powershell
+Interrupt a v0.4 job after runtime material exists or after Packet archive.
+
+A later prepare for the same repo should resume that job without a second GitHub collection.
+
+An unfinished v0.3/v5 job must return:
+
+~~~text
+legacy_job_restart_required
+~~~
+
+Use --restart-job only with explicit intent; the old runtime remains and becomes superseded.
+
+## 8. Capture Note checks
+
+Full Capture Note should preserve:
+
+- repo/revision/packet_id;
+- content_profile;
+- capture_status/analysis_status;
+- observation_fingerprint;
+- why_save;
+- adaptive map;
+- resource index when available;
+- research entry;
+- source boundary;
+- 我的记录.
+
+Refresh must preserve all content after the managed end marker.
+
+## 9. Representative real repositories
+
+| Profile | Repository | Main acceptance |
+| --- | --- | --- |
+| Software / container | Osmantic/ODS | architecture/support/release evidence, no vendor noise |
+| Agent / knowledge Skill | chenjin-cmd/wechat-graphic-monetization | SKILL + UNIVERSAL + references, assets as archived resources, 8-stage map |
+| Python project | psf/requests | compact software Capture Note, not over-expanded |
+| Minimal | octocat/Hello-World | Packet + Minimal Capture Note when analysis is insufficient |
+
+## 10. Packet failure cases
+
+Regression coverage should include:
+
+- staging write failure;
+- packet core hash mismatch;
+- source/resource hash mismatch;
+- same repo@revision same fingerprint → reuse;
+- same repo@revision different fingerprint → packet_conflict;
+- Packet archived but note publish fails → retry without GitHub recollection;
+- research_root moves but logical packet_id in note remains unchanged.
+
+## 11. Security
+
+Confirm repository content cannot:
+
+- execute commands;
+- install dependencies;
+- alter Collector behavior through repository config;
+- disclose tokens;
+- trigger file deletion;
+- force binary downloads.
+
+Private repositories remain blocked.
+
+## 12. Skill package
+
+Canonical Skill source:
+
+~~~text
+skill/github-note/SKILL.md
+~~~
+
+After Skill changes:
+
+~~~powershell
+py -3.12 scripts\build_agent_skill_packages.py
 py -3.12 scripts\build_agent_skill_packages.py --check
-```
+~~~
 
-开发环境装有 dev dependencies 时再执行 `pytest` / `ruff`；项目不得为了测试自行安装依赖。
+Do not manually edit generated Agent Skill outputs.
+
+## 13. Automatic validation
+
+Minimum available without dev dependencies:
+
+~~~powershell
+py -3.12 -m compileall src scripts tests
+py -3.12 scripts\build_agent_skill_packages.py --check
+~~~
+
+When dev dependencies are already installed:
+
+~~~powershell
+py -3.12 -m pytest
+py -3.12 -m ruff check .
+~~~
+
+Do not install dev dependencies automatically just to satisfy a test run.
+
+## 14. Obsidian style
+
+Capture Note still declares:
+
+~~~yaml
+cssclasses:
+  - learning-page
+  - github-note
+~~~
+
+Canonical CSS provider remains:
+
+~~~text
+https://github.com/ZiYao00/obsidian-learning-snippets
+~~~
+
+Research Packet does not require Obsidian CSS.

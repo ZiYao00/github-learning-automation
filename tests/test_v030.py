@@ -14,18 +14,33 @@ from github_learning.source_planner import classify_repository, plan_additional_
 def _settings(tmp_path: Path) -> Settings:
     project = tmp_path / "project"
     notes = project / "notes"
+    research = project / "research"
     notes.mkdir(parents=True)
-    return Settings(project, notes, project / ".runtime" / "github-learning", project / "config/local.json", False)
+    research.mkdir(parents=True)
+    return Settings(
+        project,
+        notes,
+        project / ".runtime" / "github-learning",
+        project / "config/local.json",
+        False,
+        notes_source="test",
+        research_root=research,
+        research_source="test",
+    )
 
 
 def _analysis() -> dict:
     return {
         "source_status": "sufficient",
         "source_notes": "来源充分。",
+        "content_profile": "software",
+        "why_save": "用于验证仓库收藏和生命周期。",
         "summary": "一个演示项目。",
-        "what_it_is": "用于测试 v0.3 生命周期。",
+        "what_it_is": "用于测试生命周期。",
         "capabilities": ["能力 A"],
         "use_cases": ["测试"],
+        "knowledge_map": [],
+        "resource_index": [],
         "requirements": "",
         "compatibility": "",
         "deployment": "",
@@ -37,6 +52,9 @@ def _analysis() -> dict:
         "source_conflicts": [],
         "caveats": [],
         "tags": ["开发工具", "Python"],
+        "evidence_map": [
+            {"source_id": "src-001", "status": "represented", "targets": ["summary"], "reason": ""}
+        ],
         "coverage_review": {"status": "passed", "notes": "已复核"},
     }
 
@@ -179,6 +197,7 @@ def test_preflight_returns_in_progress_for_unfinished_same_repository(tmp_path: 
     (job_dir / "job.json").write_text(
         json.dumps(
             {
+                "version": 6,
                 "job_id": "owner__demo__active",
                 "state": "analysis_required",
                 "collected_at": "2026-10-06T00:00:00+00:00",
@@ -201,6 +220,7 @@ def test_restart_job_supersedes_old_active_job(tmp_path: Path):
     (old_job_dir / "job.json").write_text(
         json.dumps(
             {
+                "version": 5,
                 "job_id": "owner__demo__old",
                 "state": "analysis_required",
                 "collected_at": "2026-10-06T00:00:00+00:00",

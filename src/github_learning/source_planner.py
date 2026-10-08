@@ -9,6 +9,7 @@ from typing import Any
 MAX_ADDITIONAL_SOURCES = 14
 MAX_FILE_BYTES = 80_000
 MAX_TOTAL_SOURCE_BYTES = 450_000
+MAX_ARCHIVE_RESOURCE_BYTES = 2 * 1024 * 1024
 MAX_CANDIDATE_FILE_BYTES = 1_000_000
 
 ROOT_MANIFESTS = {
@@ -42,6 +43,7 @@ _TEXT_SUFFIXES = {
 
 _DOC_SUFFIXES = {".md", ".mdx", ".rst", ".txt"}
 _DOC_DIR_NAMES = {"docs", "doc", "documentation"}
+_RESOURCE_DIR_NAMES = {"assets", "templates", "examples", "prompts", "resources"}
 _NOISE_SEGMENTS = {
     "vendor",
     "node_modules",
@@ -112,6 +114,10 @@ class SourcePlanItem:
     priority: int
     size: int
     sha: str
+    archive_role: str = "source"
+    analysis_mode: str = "full"
+    authority: str = "repository_authored"
+    coverage_required: bool = True
 
 
 def _is_text_candidate(path: str) -> bool:
@@ -119,6 +125,23 @@ def _is_text_candidate(path: str) -> bool:
     if pure.name == "Dockerfile":
         return True
     return pure.suffix.lower() in _TEXT_SUFFIXES
+
+
+def is_media_path(path: str) -> bool:
+    return PurePosixPath(path).suffix.lower() in {
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".gif",
+        ".webp",
+        ".svg",
+        ".mp4",
+        ".mov",
+        ".webm",
+        ".mp3",
+        ".wav",
+        ".pdf",
+    }
 
 
 def _is_noise_path(path: str) -> bool:
@@ -186,12 +209,17 @@ def classify_repository(tree_entries: list[dict[str, Any]]) -> str:
     ):
         return "containerized"
 
-    if any(PurePosixPath(path).name.casefold() == "package.json" and len(PurePosixPath(path).parts) <= 2 for path in paths):
+    if any(
+        PurePosixPath(path).name.casefold() == "package.json"
+        and len(PurePosixPath(path).parts) <= 2
+        for path in paths
+    ):
         return "node-application"
 
     python_names = {"pyproject.toml", "requirements.txt", "setup.py"}
     if any(
-        PurePosixPath(path).name.casefold() in python_names and len(PurePosixPath(path).parts) <= 2
+        PurePosixPath(path).name.casefold() in python_names
+        and len(PurePosixPath(path).parts) <= 2
         for path in paths
     ):
         return "python-project"
@@ -270,12 +298,24 @@ def _candidate(
 
     if is_docs_path and is_doc_file:
         if keyword_priority is not None:
-            return SourcePlanItem(path, "documentation", keyword_priority + 15, size, str(item.get("sha") or ""))
+            return SourcePlanItem(
+                path,
+                "documentation",
+                keyword_priority + 15,
+                size,
+                str(item.get("sha") or ""),
+            )
         if name in {"readme.md", "index.md"}:
             return SourcePlanItem(path, "documentation", 48, size, str(item.get("sha") or ""))
 
     if len(pure.parts) <= 2 and is_doc_file and keyword_priority is not None:
-        return SourcePlanItem(path, "documentation", keyword_priority + 5, size, str(item.get("sha") or ""))
+        return SourcePlanItem(
+            path,
+            "documentation",
+            keyword_priority + 5,
+            size,
+            str(item.get("sha") or ""),
+        )
 
     return None
 
@@ -320,4 +360,53 @@ def plan_additional_sources(
         budget += estimated
         if len(selected) >= MAX_ADDITIONAL_SOURCES:
             break
+    return selected
+
+
+def plan_archive_resources(
+    tree_entries: list[dict[str, Any]],
+    *,
+    source_profile: str,
+    selected_paths: set[str],
+) -> list[SourcePlanItem]:
+    if source_profile != "agent-skill":
+        return []
+
+    candidates: list[SourcePlanItem] = []
+    for item in tree_entries:
+        if item.get("type") != "blob":
+            continue
+        path = str(item.get("path") or "")
+        if not path or path in selected_paths or _is_noise_path(path):
+            continue
+        pure = PurePosixPath(path)
+        if not pure.parts or pure.parts[0].casefold() not in _RESOURCE_DIR_NAMES:
+            continue
+        if not _is_text_candidate(path):
+            continue
+        size = int(item.get("size") or 0)
+        if size > MAX_CANDIDATE_FILE_BYTES:
+            continue
+        candidates.append(
+            SourcePlanItem(
+                path=path,
+                kind="archived_resource",
+                priority=100,
+                size=size,
+                sha=str(item.get("sha") or ""),
+                archive_role="resource",
+                analysis_mode="index_only",
+                authority="repository_authored",
+                coverage_required=False,
+            )
+        )
+
+    candidates.sort(key=lambda item: item.path.casefold())
+    selected: list[SourcePlanItem] = []
+    budget = 0
+    for item in candidates:
+        if selected and budget + max(item.size, 1) > MAX_ARCHIVE_RESOURCE_BYTES:
+            continue
+        selected.append(item)
+        budget += max(item.size, 1)
     return selected

@@ -10,7 +10,8 @@ from .auth import probe_rate_limit, resolve_github_auth
 from .config import ConfigurationError, configure_notes, load_settings
 from .github_client import GitHubFetchError, fetch_repository_sources
 from .input_resolver import resolve_repository
-from .lifecycle import finalize_job, preflight_publish, prepare_job
+from .lifecycle import finalize_job, preflight_publish, prepare_job, resume_prepare
+from .research_packet import ResearchPacketError
 
 
 def _project_root() -> Path:
@@ -38,8 +39,15 @@ def _doctor_payload(settings, *, check_api: bool = False) -> dict[str, Any]:
     if settings.notes_is_fallback:
         issues.append(
             {
-                "code": "configuration_required",
+                "code": "notes_configuration_required",
                 "message": "尚未显式配置笔记保存位置；prepare 不会静默写入项目 fallback。",
+            }
+        )
+    if settings.research_root is None:
+        issues.append(
+            {
+                "code": "research_configuration_required",
+                "message": "尚未显式配置长期 Research 目录；v0.4 不会把 Research Packet 静默写入 runtime 或 Obsidian。",
             }
         )
     if not auth.authenticated:
@@ -50,7 +58,7 @@ def _doctor_payload(settings, *, check_api: bool = False) -> dict[str, Any]:
             }
         )
 
-    if settings.notes_is_fallback:
+    if settings.notes_is_fallback or settings.research_root is None:
         status = "configuration_required"
     elif not auth.authenticated:
         status = "auth_recommended"
@@ -64,6 +72,8 @@ def _doctor_payload(settings, *, check_api: bool = False) -> dict[str, Any]:
         "notes_root": str(settings.notes_root),
         "notes_source": settings.notes_source,
         "notes_is_fallback": settings.notes_is_fallback,
+        "research_root": str(settings.research_root) if settings.research_root else "",
+        "research_source": settings.research_source,
         "local_config": str(settings.local_config_path),
         "local_config_exists": settings.local_config_path.is_file(),
         "github_auth": {
@@ -78,22 +88,32 @@ def _doctor_payload(settings, *, check_api: bool = False) -> dict[str, Any]:
 
 
 def _configuration_required(settings) -> dict[str, Any]:
+    missing: list[str] = []
+    if settings.notes_is_fallback:
+        missing.append("notes_root")
+    if settings.research_root is None:
+        missing.append("research_root")
     return {
         "status": "configuration_required",
-        "message": "请先配置笔记保存位置，再执行 prepare。",
-        "notes_is_fallback": True,
+        "message": "请先显式配置笔记保存位置与长期 Research 目录，再执行 prepare。",
+        "missing": missing,
+        "notes_is_fallback": settings.notes_is_fallback,
         "fallback_path": str(settings.notes_root),
+        "research_root": str(settings.research_root) if settings.research_root else "",
         "local_config": str(settings.local_config_path),
-        "example": 'python scripts/github_learning.py configure --vault-root "D:\\Notes\\MyVault" --notes-subdir "GitHub-Note"',
+        "examples": [
+            'python scripts/github_learning.py configure --vault-root "D:\\Notes\\MyVault" --notes-subdir "GitHub-Note"',
+            'python scripts/github_learning.py configure --research-root "D:\\GitHub-Research"',
+        ],
     }
 
 
 def main() -> int:
     _configure_stdio()
-    parser = argparse.ArgumentParser(prog="github-learning", description="GitHub 仓库转学习笔记")
+    parser = argparse.ArgumentParser(prog="github-learning", description="GitHub 仓库长期收藏与学习笔记")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    p_prepare = sub.add_parser("prepare", help="采集 GitHub 官方资料并创建 Agent 分析任务")
+    p_prepare = sub.add_parser("prepare", help="采集 GitHub 仓库资料、归档 Research Packet 并创建 Agent 分析任务")
     p_prepare.add_argument("repository")
     p_prepare.add_argument(
         "--allow-anonymous",
@@ -113,10 +133,10 @@ def main() -> int:
     p_prepare.add_argument(
         "--restart-job",
         action="store_true",
-        help="显式忽略同仓库未完成 Job 并重新采集；旧 Job 保留用于审计，不会删除。",
+        help="显式放弃同仓库未完成 Job 并重新采集；旧 Job 保留且标记 superseded。",
     )
 
-    p_finalize = sub.add_parser("finalize", help="验证 Agent 分析并发布 Markdown")
+    p_finalize = sub.add_parser("finalize", help="验证 Agent 分析并发布 Capture Note")
     p_finalize.add_argument("job_dir")
     p_finalize.add_argument(
         "--replace-legacy",
@@ -124,14 +144,15 @@ def main() -> int:
         help="显式允许刷新缺少 managed marker 的旧版笔记；原文会先备份到 runtime job。",
     )
 
-    p_doctor = sub.add_parser("doctor", help="检查首次运行配置、GitHub 认证与输出目录")
+    p_doctor = sub.add_parser("doctor", help="检查笔记目录、Research 目录、GitHub 认证与输出环境")
     p_doctor.add_argument("--check-api", action="store_true", help="额外探测 GitHub API rate limit。")
 
-    p_configure = sub.add_parser("configure", help="创建或更新 config/local.json")
-    target = p_configure.add_mutually_exclusive_group(required=True)
+    p_configure = sub.add_parser("configure", help="创建或增量更新 config/local.json")
+    target = p_configure.add_mutually_exclusive_group(required=False)
     target.add_argument("--vault-root", type=Path, help="Obsidian Vault 根目录。")
     target.add_argument("--notes-root", type=Path, help="直接指定笔记输出目录。")
-    p_configure.add_argument("--notes-subdir", default="GitHub-Note", help="Vault 内相对子目录，默认 GitHub-Note。")
+    p_configure.add_argument("--notes-subdir", default=None, help="Vault 内相对子目录；与 --vault-root 一起使用。")
+    p_configure.add_argument("--research-root", type=Path, help="长期 Research Packet 根目录；目录必须已存在。")
 
     args = parser.parse_args()
     root = _project_root()
@@ -143,6 +164,7 @@ def main() -> int:
                 vault_root=args.vault_root,
                 notes_subdir=args.notes_subdir,
                 notes_root=args.notes_root,
+                research_root=args.research_root,
             )
             settings = load_settings(root)
             _print(
@@ -151,6 +173,8 @@ def main() -> int:
                     "local_config": str(path),
                     "notes_root": str(settings.notes_root),
                     "notes_source": settings.notes_source,
+                    "research_root": str(settings.research_root) if settings.research_root else "",
+                    "research_source": settings.research_source,
                 }
             )
             return 0
@@ -162,7 +186,7 @@ def main() -> int:
             return 0
 
         if args.command == "prepare":
-            if settings.notes_is_fallback:
+            if settings.notes_is_fallback or settings.research_root is None:
                 _print(_configuration_required(settings))
                 return 0
 
@@ -171,7 +195,7 @@ def main() -> int:
                 _print(
                     {
                         "status": "auth_recommended",
-                        "message": "未检测到 GitHub 登录；为避免匿名 60 次/小时额度导致中途失败，本次未开始采集。",
+                        "message": "未检测到 GitHub 登录；为避免匿名额度导致中途失败，本次未开始采集。",
                         "github_auth": {"authenticated": False, "source": auth.source},
                         "next_actions": [
                             "运行 gh auth login 后重试（推荐）",
@@ -190,9 +214,13 @@ def main() -> int:
                 replace_legacy=args.replace_legacy,
                 restart_job=args.restart_job,
             )
+            if preflight["status"] == "in_progress":
+                _print(resume_prepare(settings, Path(str(preflight["job_dir"]))))
+                return 0
             if preflight["status"] != "ready":
                 _print(preflight)
                 return 0
+
             bundle = fetch_repository_sources(resolved.full_name, auth)
             _print(
                 prepare_job(
@@ -207,7 +235,7 @@ def main() -> int:
             return 0
 
         if args.command == "finalize":
-            if settings.notes_is_fallback:
+            if settings.notes_is_fallback or settings.research_root is None:
                 _print(_configuration_required(settings))
                 return 0
             _print(finalize_job(settings, Path(args.job_dir), replace_legacy=args.replace_legacy))
@@ -215,7 +243,15 @@ def main() -> int:
 
     except GitHubFetchError as exc:
         _print({"status": exc.code, "error": str(exc), "http_status": exc.status})
-        return 0 if exc.code in {"auth_required", "auth_invalid", "rate_limited_or_forbidden", "private_repository_blocked"} else 2
+        return 0 if exc.code in {
+            "auth_required",
+            "auth_invalid",
+            "rate_limited_or_forbidden",
+            "private_repository_blocked",
+        } else 2
+    except ResearchPacketError as exc:
+        _print({"status": exc.code, "error": str(exc)})
+        return 0
     except ConfigurationError as exc:
         _print({"status": exc.code, "error": str(exc)})
         return 0

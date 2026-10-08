@@ -11,6 +11,21 @@ from github_learning.lifecycle import finalize_job, preflight_publish, prepare_j
 from github_learning.note_template import render_note, repository_identity_from_text, unique_note_path
 
 
+def _settings(project: Path, notes_root: Path, runtime_root: Path) -> Settings:
+    research_root = project / "research"
+    research_root.mkdir(parents=True, exist_ok=True)
+    return Settings(
+        project,
+        notes_root,
+        runtime_root,
+        project / "config/local.json",
+        False,
+        notes_source="test",
+        research_root=research_root,
+        research_source="test",
+    )
+
+
 def test_resolve_repository_url_and_slug():
     a = resolve_repository("https://github.com/ZiYao00/github-learning-automation")
     b = resolve_repository("ZiYao00/github-learning-automation")
@@ -65,70 +80,42 @@ def test_finalize_publishes_note_and_retains_runtime(tmp_path: Path):
     runtime_root = project / ".runtime" / "github-learning"
     notes_root = project / "notes"
     job_dir = runtime_root / "owner__demo__1234"
-    job_dir.mkdir(parents=True)
-    job = {
-        "collected_at": "2026-08-22T00:00:00+00:00",
-        "repository": {
-            "name": "demo",
-            "full_name": "owner/demo",
-            "html_url": "https://github.com/owner/demo",
-            "homepage": "",
-            "language": "Python",
-            "license": {"spdx_id": "MIT"},
-        },
-        "latest_release": {},
-    }
-    analysis = {
-        "source_status": "sufficient",
-        "source_notes": "README 足够。",
-        "summary": "用于演示。",
-        "what_it_is": "一个示例仓库。",
-        "capabilities": ["能力 A"],
-        "use_cases": ["测试"],
-        "install": "",
-        "usage": "",
-        "configuration": "",
-        "caveats": [],
-        "tags": ["开发工具", "Python"],
-        "coverage_review": {"status": "passed", "notes": "已复核"},
-    }
-    (job_dir / "job.json").write_text(json.dumps(job, ensure_ascii=False), encoding="utf-8")
-    (job_dir / "analysis.json").write_text(json.dumps(analysis, ensure_ascii=False), encoding="utf-8")
-    settings = Settings(project, notes_root, runtime_root, project / "config/local.json", False)
+    _write_job(job_dir, _valid_job(), _valid_analysis())
+    settings = _settings(project, notes_root, runtime_root)
 
     result = finalize_job(settings, job_dir)
 
     assert result["status"] == "note_ready"
+    assert result["analysis_status"] == "sufficient"
     assert result["runtime_status"] == "retained_for_audit"
     assert job_dir.is_dir()
     assert (notes_root / "demo.md").is_file()
 
 
-def test_source_insufficient_is_normal_status(tmp_path: Path):
+def test_source_insufficient_publishes_minimal_capture_note(tmp_path: Path):
     project = tmp_path / "project"
     runtime_root = project / ".runtime" / "github-learning"
     notes_root = project / "notes"
     job_dir = runtime_root / "owner__demo__1234"
-    job_dir.mkdir(parents=True)
-    job = {
-        "collected_at": "2026-08-22T00:00:00+00:00",
-        "repository": {"name": "demo", "full_name": "owner/demo", "html_url": "https://github.com/owner/demo"},
-        "latest_release": {},
-    }
+    job = _valid_job()
     analysis = {
         "source_status": "insufficient",
         "source_notes": "README 只有项目名，没有用途或使用方式。",
+        "why_save": "先保存这个仓库，未来再研究。",
+        "tags": [],
         "coverage_review": {"status": "pending", "notes": ""},
     }
-    (job_dir / "job.json").write_text(json.dumps(job, ensure_ascii=False), encoding="utf-8")
-    (job_dir / "analysis.json").write_text(json.dumps(analysis, ensure_ascii=False), encoding="utf-8")
-    settings = Settings(project, notes_root, runtime_root, project / "config/local.json", False)
+    _write_job(job_dir, job, analysis)
+    settings = _settings(project, notes_root, runtime_root)
 
     result = finalize_job(settings, job_dir)
 
-    assert result["status"] == "source_insufficient"
+    assert result["status"] == "note_ready"
+    assert result["analysis_status"] == "insufficient"
     assert "README" in result["reason"]
-    assert not notes_root.exists()
+    text = Path(result["note_path"]).read_text(encoding="utf-8")
+    assert "待进一步研究" in text
+    assert "## 我的记录" in text
 
 
 def test_prepare_refuses_fallback_without_creating_runtime(tmp_path: Path):
@@ -234,15 +221,25 @@ def _write_job(job_dir: Path, job: dict, analysis: dict) -> None:
     job_dir.mkdir(parents=True, exist_ok=True)
     (job_dir / "job.json").write_text(json.dumps(job, ensure_ascii=False), encoding="utf-8")
     (job_dir / "analysis.json").write_text(json.dumps(analysis, ensure_ascii=False), encoding="utf-8")
+    (job_dir / "source_manifest.json").write_text(
+        json.dumps({"schema_version": 2, "sources": [], "resources": []}, ensure_ascii=False),
+        encoding="utf-8",
+    )
 
 
 def _valid_job(full_name: str = "owner/demo", *, publish_mode: str = "upsert") -> dict:
     owner, name = full_name.split("/", 1)
+    revision = "abc123"
     return {
-        "version": 2,
+        "version": 6,
+        "state": "analysis_required",
         "publish_mode": publish_mode,
         "collected_at": "2026-08-22T16:30:00+00:00",
         "collected_local_date": "2026-08-23",
+        "revision": revision,
+        "packet_id": f"{full_name}@{revision}",
+        "content_profile": "software",
+        "observation_fingerprint": "obs-123",
         "repository": {
             "name": name,
             "full_name": full_name,
@@ -253,6 +250,8 @@ def _valid_job(full_name: str = "owner/demo", *, publish_mode: str = "upsert") -
         },
         "latest_release": {},
         "collection_warnings": [],
+        "source_paths": [],
+        "resource_paths": [],
     }
 
 
@@ -260,16 +259,21 @@ def _valid_analysis(summary: str = "用于演示。") -> dict:
     return {
         "source_status": "sufficient",
         "source_notes": "README 足够。",
+        "content_profile": "software",
+        "why_save": "用于验证 Capture Note 的刷新与长期收藏行为。",
         "summary": summary,
         "what_it_is": "一个示例仓库。",
         "capabilities": ["能力 A"],
         "use_cases": ["测试"],
+        "knowledge_map": [],
+        "resource_index": [],
         "install": "",
         "usage": "",
         "configuration": "",
         "source_conflicts": [],
         "caveats": [],
         "tags": ["开发工具", "Python"],
+        "evidence_map": [],
         "coverage_review": {"status": "passed", "notes": "已复核"},
     }
 
@@ -280,7 +284,7 @@ def test_render_note_uses_local_collection_date_and_conflict_callout():
     analysis["source_conflicts"] = ["README 开头和结尾的许可证说明不一致。"]
     text = render_note(job, analysis)
     assert 'updated: "2026-08-23"' in text
-    assert "> [!risk] 官方资料存在冲突" in text
+    assert "> [!risk] 仓库资料存在冲突" in text
     assert "许可证说明不一致" in text
 
 
@@ -302,7 +306,7 @@ def test_upsert_refreshes_same_repo_and_preserves_personal_tail(tmp_path: Path):
     job = _valid_job()
     analysis = _valid_analysis("新摘要")
     _write_job(job_dir, job, analysis)
-    settings = Settings(project, notes_root, runtime_root, project / "config/local.json", False)
+    settings = _settings(project, notes_root, runtime_root)
 
     result = finalize_job(settings, job_dir)
 
@@ -325,7 +329,7 @@ def test_same_repo_name_from_different_owner_gets_owner_suffix(tmp_path: Path):
 
     job_dir = runtime_root / "ownerB__demo__new"
     _write_job(job_dir, _valid_job("ownerB/demo"), _valid_analysis())
-    settings = Settings(project, notes_root, runtime_root, project / "config/local.json", False)
+    settings = _settings(project, notes_root, runtime_root)
 
     result = finalize_job(settings, job_dir)
 
@@ -345,7 +349,7 @@ def test_legacy_refresh_is_blocked_without_explicit_replace(tmp_path: Path):
 
     job_dir = runtime_root / "owner__demo__new"
     _write_job(job_dir, _valid_job(), _valid_analysis("新摘要"))
-    settings = Settings(project, notes_root, runtime_root, project / "config/local.json", False)
+    settings = _settings(project, notes_root, runtime_root)
 
     blocked = finalize_job(settings, job_dir)
     assert blocked["status"] == "legacy_note_refresh_blocked"
@@ -368,7 +372,7 @@ def test_explicit_new_note_keeps_multiple_versions_for_same_repo(tmp_path: Path)
 
     job_dir = runtime_root / "owner__demo__new"
     _write_job(job_dir, _valid_job(publish_mode="new"), _valid_analysis("第二版"))
-    settings = Settings(project, notes_root, runtime_root, project / "config/local.json", False)
+    settings = _settings(project, notes_root, runtime_root)
 
     result = finalize_job(settings, job_dir)
     assert result["status"] == "note_ready"
@@ -475,7 +479,7 @@ def test_preflight_detects_managed_refresh_before_collection(tmp_path: Path):
     notes_root.mkdir(parents=True)
     existing = notes_root / "demo.md"
     existing.write_text(render_note(_valid_job(), _valid_analysis()), encoding="utf-8")
-    settings = Settings(project, notes_root, runtime_root, project / "config/local.json", False)
+    settings = _settings(project, notes_root, runtime_root)
 
     result = preflight_publish(settings, "owner/demo")
 
@@ -492,7 +496,7 @@ def test_preflight_blocks_legacy_before_collection_and_allows_explicit_migration
     notes_root.mkdir(parents=True)
     legacy = notes_root / "demo.md"
     legacy.write_text('---\nrepo: "owner/demo"\n---\n\n# demo\n', encoding="utf-8")
-    settings = Settings(project, notes_root, runtime_root, project / "config/local.json", False)
+    settings = _settings(project, notes_root, runtime_root)
 
     blocked = preflight_publish(settings, "owner/demo")
     allowed = preflight_publish(settings, "owner/demo", replace_legacy=True)
@@ -509,7 +513,7 @@ def test_prepare_records_legacy_authorization_in_job(tmp_path: Path):
     notes_root = project / "notes"
     notes_root.mkdir(parents=True)
     (notes_root / "demo.md").write_text('---\nrepo: "owner/demo"\n---\n\n# demo\n', encoding="utf-8")
-    settings = Settings(project, notes_root, runtime_root, project / "config/local.json", False)
+    settings = _settings(project, notes_root, runtime_root)
     resolved = resolve_repository("owner/demo")
     bundle = SourceBundle(
         repository={"name": "demo", "full_name": "owner/demo", "html_url": "https://github.com/owner/demo"},
@@ -517,13 +521,15 @@ def test_prepare_records_legacy_authorization_in_job(tmp_path: Path):
         root_entries=[],
         manifests={},
         latest_release=None,
+        revision="abc123",
+        default_branch="main",
     )
 
     result = prepare_job(settings, resolved, bundle, replace_legacy=True)
     job = json.loads((Path(result["job_dir"]) / "job.json").read_text(encoding="utf-8"))
 
     assert result["status"] == "analysis_required"
-    assert job["version"] == 5
+    assert job["version"] == 6
     assert job["publish_operation"] == "replace_legacy"
     assert job["replace_legacy_authorized"] is True
     assert job["target_note"].endswith("demo.md")
@@ -537,7 +543,7 @@ def test_authorized_legacy_refresh_rejects_target_changed_after_prepare(tmp_path
     notes_root.mkdir(parents=True)
     legacy = notes_root / "demo.md"
     legacy.write_text('---\nrepo: "owner/demo"\n---\n\n# demo\n\noriginal\n', encoding="utf-8")
-    settings = Settings(project, notes_root, runtime_root, project / "config/local.json", False)
+    settings = _settings(project, notes_root, runtime_root)
     resolved = resolve_repository("owner/demo")
     bundle = SourceBundle(
         repository={"name": "demo", "full_name": "owner/demo", "html_url": "https://github.com/owner/demo"},
@@ -545,6 +551,8 @@ def test_authorized_legacy_refresh_rejects_target_changed_after_prepare(tmp_path
         root_entries=[],
         manifests={},
         latest_release=None,
+        revision="abc123",
+        default_branch="main",
     )
 
     prepared = prepare_job(settings, resolved, bundle, replace_legacy=True)

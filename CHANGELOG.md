@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.4.0 - 2026-10-08
+
+Durable Knowledge Capture update.
+
+- Add explicit `research_root` configuration and require both Reading Layer and Archive Layer before real collection.
+- Add immutable Research Packet V1 with `owner/repo@revision` identity, staging, SHA-256 validation, reuse/conflict protection, repository/tree/media indexes, archived sources/resources, and repo-level observations.
+- Separate analysis context from archive storage so truncated Agent inputs no longer truncate the long-term high-value archive copy.
+- Treat Latest Release and mutable repository metadata as Observations instead of commit Snapshot content.
+- Extend Source Planner with Agent/Skill references plus archived resources under assets/templates/examples/prompts/resources while keeping resources out of the default first-pass analysis context.
+- Upgrade runtime lifecycle to Job v6, resume interrupted v0.4 jobs without recollection, and gate v0.3/v5 jobs behind explicit restart.
+- Add Capture Note V2 with `why_save`, adaptive content/project maps, reusable resource index, logical `packet_id`, `content_profile`, `capture_status`, `analysis_status`, and `observation_fingerprint`.
+- Add machine-verifiable Evidence Map coverage for every `coverage_required=true` source while retaining semantic `coverage_review`.
+- Change insufficient-source behavior from “no note” to a clearly labeled Minimal Capture Note so successful capture is never lost.
+- Add whole-note `no_change` fast path for unchanged Packet + Observation.
+- Define Derived Artifact boundaries for future Deep Note / Compare / Media Brief workflows without implementing a second collector.
+- Add v0.4 tests, Research Packet / Derived Artifact specs, multi-Agent contract updates, and refreshed release/maintenance documentation.
+
 ## 0.3.0 - 2026-10-06
 
 Source-depth, resumability, and multi-Agent maintenance update.

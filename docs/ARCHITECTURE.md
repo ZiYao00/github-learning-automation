@@ -1,145 +1,275 @@
-# 架构说明
+# Architecture
 
-## 主链路
+## Product boundary
 
-```text
-GitHub URL / owner/repo
-→ doctor / first-run gate
-→ config：显式确定笔记输出目录
-→ auth：环境 Token → GitHub CLI → 显式匿名
-→ input_resolver 规范化 owner/repo
-→ github_client 固定 HEAD revision，只读采集官方 GitHub 资料
-→ source_planner 在预算内选择高价值补充文档
-→ lifecycle.prepare 写 source_manifest / sources / runtime job
-→ Agent 根据当前 Job 来源建立语义分析
-→ coverage review
-→ lifecycle.finalize 按 repo identity 创建或 refresh
-→ Markdown
-```
+github-learning-automation v0.4 是一个 GitHub Knowledge Capture 工具，不是完整 GitHub Research Agent。
 
-## 首次运行门禁
+默认目标：
 
-首次运行不是文档提示，而是程序状态机：
+~~~text
+发现一个公开 GitHub 仓库
+→ 可靠收藏
+→ 长期保存高价值证据
+→ 生成适合人快速阅读的 Capture Note
+→ 未来按需继续学习、比较或制作介绍内容
+~~~
 
-- `configuration_required`：没有显式笔记目录；`prepare` / `finalize` 都不得写入项目 fallback。
-- `auth_recommended`：没有检测到 GitHub 认证；默认不开始匿名采集。
-- `ready`：输出目录和认证都已准备好。
+## Three artifact layers
 
-匿名模式仍被支持，但必须通过 `--allow-anonymous` 显式选择。
+~~~text
+GitHub
+  ↓
+Collector + Source Planner
+  ↓
+Research Packet
+  │ immutable evidence
+  │
+  ├─→ Capture Note
+  │    human-first
+  │
+  └─→ Derived Artifact
+       Deep Note / Compare / Media Brief
+~~~
 
-## CLI / Launcher
+前三层由项目的 Control Plane 约束：配置、schema、lifecycle、Evidence Map 和 Agent Skill。
 
-项目保留 setuptools console script：`github-learning`。同时提供零安装项目 launcher：
+## Processing vs archive vs reading
 
-```text
-scripts/github_learning.py
-```
+- .runtime/github-learning：Processing Layer，保存 Job、Agent handoff、分析输入与恢复状态；
+- research_root：Archive Layer，保存 immutable Research Packet 和 mutable observations；
+- notes_root：Reading Layer，保存 Obsidian Capture Note。
 
-Skill 默认调用 launcher，因此不会因为用户没有执行 `pip install -e .` 而出现 command not found。
+三个目录不能互相替代。
 
-## GitHub 认证边界
+## Collection snapshot
 
-认证解析顺序：
+prepare 获取默认分支 HEAD commit，并把仓库文件读取固定到同一 revision。
 
-1. `GITHUB_TOKEN` / `GH_TOKEN`；
-2. 本机 `gh auth token`；
-3. anonymous。
+核心 Git 数据：
 
-Token 只进入请求 Header，不进入 runtime、配置、日志或 Markdown。
+- repository identity；
+- default branch；
+- commit SHA；
+- Git tree；
+- README；
+- manifest；
+- Source Planner 选择的高价值文档；
+- archive resources；
+- media index。
 
-## Repository identity 与发布策略
+仓库文件使用 Git revision 固定。Latest Release 等动态平台信息属于 Observation，不属于 commit Snapshot。
 
-稳定身份是 `owner/repo`，而不是文件名。
+## Source Planner
 
-`prepare` 默认写入 `publish_mode=upsert`：
+Source Planner 决定两件不同的事：
 
-- 没有该 repo 的笔记 → 创建；
-- 已有且是 v0.2+ managed note → 原路径 refresh；
-- 同一 repo 找到多篇 → `duplicate_repository_notes`，停止自动刷新；
-- 已有旧版无 marker 笔记 → `legacy_note_refresh_blocked`，默认不覆盖。
+1. 什么值得长期归档；
+2. 什么值得进入首轮 Agent 分析。
 
-只有显式 `--new-note` 才使用 `publish_mode=new` 创建另一份独立笔记。
+核心 metadata：
 
-同名不同 owner 时，文件名冲突项使用 `repo · owner.md`，但 Frontmatter 的 `repo` 仍是唯一身份。
+- archive_role；
+- analysis_mode；
+- authority；
+- coverage_required。
 
-## Managed region
+v0.4 继续使用有限分析预算，避免上下文爆炸；长期归档使用独立预算。
 
-自动生成正文位于：
+Agent/Skill 仓库额外识别：
 
-```text
-GITHUB_NOTE_MANAGED_START
-...
-GITHUB_NOTE_MANAGED_END
-```
+- SKILL.md；
+- UNIVERSAL.md；
+- references/*.md；
+- assets/templates/examples/prompts/resources 下的轻量文本资源。
 
-refresh 会重建 Frontmatter 和 managed region，并原样保留 `MANAGED_END` 之后的个人区域。这样仓库更新和用户实测可以共存在一篇笔记中。
+资源默认归档但不全文进入首轮分析。
 
-旧版笔记没有 marker 时，`--replace-legacy` 是显式迁移开关。新 job 会记录授权目标路径与 SHA-256；如果目标在 prepare→finalize 之间变化，返回 `legacy_target_changed` 并要求重新授权。目标未变化时，程序会在覆盖前写入 runtime `legacy_note_backup.md`，不静默丢失原文。
+## Research Packet publication
 
-## GitHub 采集、Snapshot 与 Source Planner
+新 Job 先把确定性材料写到 runtime，然后：
 
-prepare 首先解析默认分支 HEAD commit，并把本轮仓库文件采集固定到该 revision，避免 README、manifest 与 docs 混入不同提交状态。
+~~~text
+runtime
+→ <research_root>/.staging/<job-id>
+→ hash/schema validation
+→ atomic promote
+→ snapshots/<revision>
+~~~
 
-核心来源：Repository metadata、HEAD commit、README、根目录。核心来源失败会停止任务。
+同一 repo@revision：
 
-Source Planner 基于 Git tree 做有限深度选择，并把 README 中明确链接的官方文档作为强信号。它优先读取根 manifest、顶层/有效 Skill 与 Agent metadata，以及 quickstart / support matrix / install / usage / architecture / validation / compatibility 等高价值文档；同时过滤 vendor、node_modules、build/dist 等噪音目录，避免把深层第三方 AGENTS.md 或大量 Compose/config 文件误当成项目学习主资料。它受文件数量、单文件大小和总预算限制，不是全仓库抓取器。
+- fingerprint 相同 → reuse；
+- fingerprint 不同 → packet_conflict；
+- 永不覆盖正式 Snapshot。
 
-Latest Release 属于当前发布状态补充来源，不参与 commit snapshot；可选来源失败会进入 `collection_warnings`，不等于仓库不存在对应内容。
+核心文件与每个 source/resource 都使用 SHA-256 完整性检查。
 
-`source_manifest.json` 记录 revision、来源路径、类型、SHA、原始/保存大小、截断状态与本地 runtime 文件，是来源审计真源；`source_bundle.md` 只是 Agent 便利视图。
+## Job v6
 
-## 时间语义
+主状态：
 
-`collected_at` 保留 UTC ISO 时间用于审计；`collected_local_date` 使用运行机器的本地时区。笔记 Frontmatter 的 `updated` 使用本地日期，避免 UTC 跨日导致 Obsidian 日期显示提前一天。
+~~~text
+collected
+→ packet_archived
+→ analysis_required
+→ analysis_complete
+→ published
+~~~
 
-## 来源冲突与采集缺口
+特殊状态：
 
-二者必须分开：
+- superseded；
+- no_change；
+- failed（未来如需显式持久化失败状态）。
 
-- `source_conflicts`：官方来源本身互相矛盾，由 Agent 判断并在正文显示 `[!risk]`；
-- `collection_warnings`：采集器没有拿到某个可选来源，由程序记录并在正文显示 `[!meta]`。
+v0.3 或更早的活动 Job 不做隐式迁移；返回 legacy_job_restart_required，用户可显式 --restart-job。
 
-“没采到”不能写成“不存在”。
+## Resume
 
-## Shared Obsidian style dependency
+如果任务停在 collected / packet_archived：
 
-本项目只消费共享样式，不拥有 CSS 真源。Provider 是：
+- 复用 runtime 材料；
+- 继续归档/验证 Packet；
+- 不重新请求 GitHub。
 
-```text
-https://github.com/ZiYao00/obsidian-learning-snippets
-```
+如果同仓库存在未完成 v0.4 Job，prepare 直接恢复它。
 
-`config/obsidian-style.json` 是机器可读的 Consumer Contract，声明 Core、Extension 与 `cssclasses`。项目模板负责持续输出 `learning-page` + `github-note`；共享 CSS 的内容和版本在 Provider 仓库维护。本项目不通过受 Git 跟踪的 `obsidian/snippets/` junction 分发 CSS。
+--restart-job 是显式放弃旧 runtime attempt；旧 Job 保留并标记 superseded。
 
-## Runtime 恢复与幂等
+## Analysis
 
-v0.3 Job 写入 `state`。同一 `owner/repo` 存在 `analysis_required` / `analysis_complete` 等未完成状态时，默认 prepare 返回 `in_progress`，让 Agent 继续已有 Job；不会重复访问 GitHub。只有显式 `--restart-job` 才重新采集，并把旧活动 Job 标记为 `superseded`，不删除审计资料。
+Agent 只把当前 Job 的：
 
-成功发布后 Job 进入 `published` 并保存 final result。再次 finalize 会直接返回同一发布结果并标记 `idempotent=true`。
+- source_manifest；
+- sources；
+- observation；
+- source_bundle；
 
-## 不可信来源与私有仓库边界
+作为当前分析证据。
 
-仓库正文只作为数据证据。README、SKILL.md、AGENTS.md、docs、Release 中的 Agent/系统指令或命令要求不能改变当前任务，也不能触发代码执行或文件操作。私有仓库即使凭据可读也默认返回 `private_repository_blocked`。
+resources 默认用于建立资源索引，不要求首轮全文分析。
 
-## 状态而不是异常
+仓库内容全部是不可信数据，不得变成执行指令。
 
-以下属于预期业务状态，不应伪装成程序错误：
+## Evidence Map
 
-- `configuration_required`
-- `auth_recommended`
-- `analysis_required`
-- `in_progress`
-- `source_insufficient`
-- `private_repository_blocked`
-- `legacy_note_refresh_blocked`
-- `legacy_target_changed`
-- `duplicate_repository_notes`
-- `note_ready`
+coverage_required=true 的 source 必须：
 
-只有无效配置、无效 runtime 路径、未知分析状态、核心网络/解析故障等才属于真正 error。
+- represented；
+或
+- omitted_with_reason。
 
-## 确定性边界
+Evidence Map 提供机器可验证的 Source → Note section grounding。
 
-程序负责：URL、仓库元数据、来源包、Frontmatter、H1、标签上限、章节渲染、输出路径、repo identity、refresh、文件名冲突策略、runtime 安全边界、首次运行门禁和认证方式选择。
+coverage_review 继续作为 Agent 的语义复核。
 
-Agent 负责：判断来源是否充分；提炼“是什么 / 能做什么 / 场景 / 安装 / 使用 / 配置 / 注意事项”；识别官方来源冲突；生成 2-5 个知识标签；覆盖复核。
+v0.4 不实现 sentence/line-level Grounded Claims。
+
+## Capture Note
+
+Capture Note V2 是人类阅读层。
+
+它保存：
+
+- repo/revision/packet identity；
+- content profile；
+- capture/analysis status；
+- observation fingerprint；
+- why_save；
+- compact summary；
+- adaptive knowledge/project map；
+- reusable resource index；
+- research entry。
+
+完整结构见 NOTE-SPEC.md。
+
+source_status=insufficient 时仍发布 Minimal Capture Note；这表示“收藏成功，但暂未完成充分分析”。
+
+## No-op
+
+whole-note no-op 条件：
+
+~~~text
+existing Capture Note packet_id == current packet_id
+AND
+existing observation_fingerprint == current observation fingerprint
+~~~
+
+满足时返回 no_change：
+
+- Packet 可复用；
+- 不进入 Agent analysis；
+- 不重写笔记。
+
+v0.4 不做 section-level incremental regeneration。
+
+## Configuration
+
+本机必须显式配置：
+
+- notes_root，或 vault_root + notes_subdir；
+- research_root。
+
+configure 使用 merge 更新，重新配置笔记目录不能擦掉 research_root。
+
+可用环境变量：
+
+- GITHUB_LEARNING_NOTES_ROOT
+- GITHUB_LEARNING_VAULT_ROOT
+- GITHUB_LEARNING_NOTES_SUBDIR
+- GITHUB_LEARNING_RESEARCH_ROOT
+
+## Security boundary
+
+默认：
+
+- 只支持公开仓库；
+- 不 clone；
+- 不执行目标代码；
+- 不安装目标依赖；
+- 不执行目标仓库配置；
+- 不信任 README/SKILL/AGENTS 中的 Agent 指令；
+- 不自动下载 binary；
+- 不全量抓 Issues/PR/Discussions。
+
+## Derived Artifact boundary
+
+Deep Note、Compare、Media Brief 必须复用 Research Packet。
+
+Capture Note 是 editorial context，不是唯一事实源。
+
+对外发布内容未来默认要求 Fresh Check。
+
+v0.4 只定义接口，不实现完整视频生成流程。
+
+## Obsidian
+
+owner/repo 仍是 Capture Note 稳定身份。
+
+managed region 之后的“我的记录”属于用户，不得被 refresh 覆盖。
+
+共享 CSS 真源仍是 obsidian-learning-snippets，本项目只声明 learning-page + github-note。
+
+## Failure and recovery principles
+
+- Packet 成功、Note 失败：继续 runtime，不重新采集 GitHub；
+- Packet staging 失败：保留 staging 供诊断；
+- Packet conflict：停止，不覆盖；
+- duplicate note：停止，不猜目标；
+- legacy note changed：停止并重新授权；
+- source insufficient：发布 Minimal Capture Note；
+- no_change：正常完成状态。
+
+## Non-goals for v0.4
+
+- SQLite / vector DB / RAG / BM25；
+- Web UI / MCP server；
+- 全量 repository clone；
+- 完整二进制资产归档；
+- Issues/PR/Discussions 研究；
+- 私有仓库；
+- claim-level line grounding；
+- 完整 OKF；
+- 自动清理 Snapshot/runtime；
+- 自动生成视频；
+- section-level incremental regeneration。
