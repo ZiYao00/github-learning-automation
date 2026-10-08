@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .auth import probe_rate_limit, resolve_github_auth
-from .config import ConfigurationError, configure_notes, load_settings
+from .config import ConfigurationError, configure_defaults, configure_notes, load_settings
 from .github_client import GitHubFetchError, fetch_repository_sources
 from .input_resolver import resolve_repository
 from .lifecycle import finalize_job, preflight_publish, prepare_job, resume_prepare
@@ -32,79 +32,150 @@ def _print(payload: dict[str, Any]) -> None:
     print(json.dumps(payload, ensure_ascii=False, indent=2))
 
 
-def _doctor_payload(settings, *, check_api: bool = False) -> dict[str, Any]:
+def _obsidian_mapping(settings) -> dict[str, Any]:
+    if settings.vault_root is None or settings.notes_subdir is None:
+        return {"status": "not_configured"}
+
+    display_path = settings.vault_root / settings.notes_subdir
+    if settings.notes_root == display_path:
+        return {
+            "status": "direct_vault",
+            "display_path": str(display_path),
+            "notes_root": str(settings.notes_root),
+        }
+    if not display_path.exists():
+        return {
+            "status": "mapping_missing",
+            "display_path": str(display_path),
+            "notes_root": str(settings.notes_root),
+            "message": "建议把 Vault 子目录建立为指向 notes_root 的 Junction；缺少映射不阻塞项目内存储。",
+        }
+    try:
+        mapping_ok = display_path.resolve() == settings.notes_root.resolve()
+    except OSError:
+        mapping_ok = False
+    return {
+        "status": "ok" if mapping_ok else "mapping_mismatch",
+        "display_path": str(display_path),
+        "notes_root": str(settings.notes_root),
+    }
+
+
+def _needs_onboarding(settings) -> bool:
+    return settings.notes_is_fallback or settings.research_is_fallback
+
+
+def _onboarding_payload(settings) -> dict[str, Any]:
     auth = resolve_github_auth()
-    issues: list[dict[str, str]] = []
+    actions: list[dict[str, Any]] = []
+    warnings: list[dict[str, str]] = []
 
-    if settings.notes_is_fallback:
-        issues.append(
+    if settings.notes_is_fallback and settings.research_is_fallback:
+        actions.append(
             {
-                "code": "notes_configuration_required",
-                "message": "尚未显式配置笔记保存位置；prepare 不会静默写入项目 fallback。",
+                "code": "storage_choice_required",
+                "message": "首次使用请确认存储位置。若不指定自定义路径，可接受项目内默认目录。",
+                "defaults": {
+                    "notes_root": str(settings.notes_root),
+                    "research_root": str(settings.research_root),
+                },
+                "accept_defaults": "python scripts/github_learning.py configure --use-defaults",
             }
         )
-    if settings.research_root is None:
-        issues.append(
-            {
-                "code": "research_configuration_required",
-                "message": "尚未显式配置长期 Research 目录；v0.4 不会把 Research Packet 静默写入 runtime 或 Obsidian。",
-            }
-        )
+    else:
+        if settings.notes_is_fallback:
+            actions.append(
+                {
+                    "code": "notes_root_required",
+                    "message": "尚未确认笔记物理目录；可指定 notes_root，或显式接受项目默认目录。",
+                    "default": str(settings.notes_root),
+                }
+            )
+        if settings.research_is_fallback:
+            actions.append(
+                {
+                    "code": "research_root_required",
+                    "message": "尚未确认长期 Research 目录；可指定自定义目录，或使用项目内 research/github。",
+                    "default": str(settings.research_root),
+                }
+            )
+
     if not auth.authenticated:
-        issues.append(
+        actions.append(
             {
-                "code": "auth_recommended",
-                "message": "未检测到 GitHub 登录。匿名 API 额度有限；首次使用应先登录，或显式选择匿名模式。",
+                "code": "github_auth_recommended",
+                "message": "未检测到 GitHub 登录；推荐先运行 gh auth login。匿名模式需要显式允许。",
             }
         )
 
-    if settings.notes_is_fallback or settings.research_root is None:
-        status = "configuration_required"
+    mapping = _obsidian_mapping(settings)
+    if mapping["status"] in {"mapping_missing", "mapping_mismatch"}:
+        warnings.append(
+            {
+                "code": f"obsidian_notes_{mapping['status']}",
+                "message": "Obsidian 映射未就绪；真实文件仍以 notes_root 为准，不影响 Research Packet。",
+            }
+        )
+
+    if _needs_onboarding(settings):
+        status = "action_required"
     elif not auth.authenticated:
         status = "auth_recommended"
     else:
         status = "ready"
 
-    payload: dict[str, Any] = {
+    return {
         "status": status,
         "ready": status == "ready",
         "project_root": str(settings.project_root),
-        "notes_root": str(settings.notes_root),
-        "notes_source": settings.notes_source,
-        "notes_is_fallback": settings.notes_is_fallback,
-        "research_root": str(settings.research_root) if settings.research_root else "",
-        "research_source": settings.research_source,
         "local_config": str(settings.local_config_path),
         "local_config_exists": settings.local_config_path.is_file(),
-        "github_auth": {
-            "authenticated": auth.authenticated,
-            "source": auth.source,
-        },
-        "issues": issues,
+        "notes_root": str(settings.notes_root),
+        "notes_source": settings.notes_source,
+        "research_root": str(settings.research_root) if settings.research_root else "",
+        "research_source": settings.research_source,
+        "vault_root": str(settings.vault_root) if settings.vault_root else "",
+        "notes_subdir": str(settings.notes_subdir) if settings.notes_subdir else "",
+        "obsidian_mapping": mapping,
+        "github_auth": {"authenticated": auth.authenticated, "source": auth.source},
+        "actions": actions,
+        "warnings": warnings,
     }
+
+
+def _doctor_payload(settings, *, check_api: bool = False) -> dict[str, Any]:
+    payload = _onboarding_payload(settings)
+    issues: list[dict[str, str]] = []
+    if settings.notes_is_fallback:
+        issues.append(
+            {
+                "code": "notes_configuration_required",
+                "message": "笔记目录尚未由用户确认；当前只显示项目内建议默认值。",
+            }
+        )
+    if settings.research_is_fallback:
+        issues.append(
+            {
+                "code": "research_configuration_required",
+                "message": "Research 目录尚未由用户确认；当前只显示项目内建议默认值。",
+            }
+        )
+    payload["issues"] = issues
     if check_api:
-        payload["github_api"] = probe_rate_limit(auth)
+        payload["github_api"] = probe_rate_limit(resolve_github_auth())
     return payload
 
 
-def _configuration_required(settings) -> dict[str, Any]:
-    missing: list[str] = []
-    if settings.notes_is_fallback:
-        missing.append("notes_root")
-    if settings.research_root is None:
-        missing.append("research_root")
+def _onboarding_required(settings) -> dict[str, Any]:
+    payload = _onboarding_payload(settings)
     return {
-        "status": "configuration_required",
-        "message": "请先显式配置笔记保存位置与长期 Research 目录，再执行 prepare。",
-        "missing": missing,
-        "notes_is_fallback": settings.notes_is_fallback,
-        "fallback_path": str(settings.notes_root),
+        "status": "onboarding_required",
+        "message": "首次采集前请先确认本机存储路径。可以接受项目默认目录，也可以指定自定义目录。",
+        "notes_root": str(settings.notes_root),
         "research_root": str(settings.research_root) if settings.research_root else "",
         "local_config": str(settings.local_config_path),
-        "examples": [
-            'python scripts/github_learning.py configure --vault-root "D:\\Notes\\MyVault" --notes-subdir "GitHub-Note"',
-            'python scripts/github_learning.py configure --research-root "D:\\GitHub-Research"',
-        ],
+        "actions": payload["actions"],
+        "warnings": payload["warnings"],
     }
 
 
@@ -144,10 +215,17 @@ def main() -> int:
         help="显式允许刷新缺少 managed marker 的旧版笔记；原文会先备份到 runtime job。",
     )
 
+    sub.add_parser("onboarding", help="首次使用时确认存储位置、Vault 映射与 GitHub 登录")
+
     p_doctor = sub.add_parser("doctor", help="检查笔记目录、Research 目录、GitHub 认证与输出环境")
     p_doctor.add_argument("--check-api", action="store_true", help="额外探测 GitHub API rate limit。")
 
     p_configure = sub.add_parser("configure", help="创建或增量更新 config/local.json")
+    p_configure.add_argument(
+        "--use-defaults",
+        action="store_true",
+        help="显式接受项目内默认目录 notes/github + research/github；只补齐缺失项。",
+    )
     target = p_configure.add_mutually_exclusive_group(required=False)
     target.add_argument("--vault-root", type=Path, help="Obsidian Vault 根目录。")
     target.add_argument("--notes-root", type=Path, help="直接指定笔记输出目录。")
@@ -159,13 +237,25 @@ def main() -> int:
 
     try:
         if args.command == "configure":
-            path = configure_notes(
-                root,
-                vault_root=args.vault_root,
-                notes_subdir=args.notes_subdir,
-                notes_root=args.notes_root,
-                research_root=args.research_root,
+            has_custom = any(
+                value is not None
+                for value in (args.vault_root, args.notes_root, args.research_root, args.notes_subdir)
             )
+            if args.use_defaults and has_custom:
+                raise ConfigurationError(
+                    "configure_conflict",
+                    "--use-defaults 不能与自定义路径参数同时使用；先接受默认值，再单独增量配置 Vault 即可。",
+                )
+            if args.use_defaults:
+                path = configure_defaults(root)
+            else:
+                path = configure_notes(
+                    root,
+                    vault_root=args.vault_root,
+                    notes_subdir=args.notes_subdir,
+                    notes_root=args.notes_root,
+                    research_root=args.research_root,
+                )
             settings = load_settings(root)
             _print(
                 {
@@ -181,13 +271,17 @@ def main() -> int:
 
         settings = load_settings(root)
 
+        if args.command == "onboarding":
+            _print(_onboarding_payload(settings))
+            return 0
+
         if args.command == "doctor":
             _print(_doctor_payload(settings, check_api=args.check_api))
             return 0
 
         if args.command == "prepare":
-            if settings.notes_is_fallback or settings.research_root is None:
-                _print(_configuration_required(settings))
+            if _needs_onboarding(settings):
+                _print(_onboarding_required(settings))
                 return 0
 
             auth = resolve_github_auth()
@@ -235,8 +329,8 @@ def main() -> int:
             return 0
 
         if args.command == "finalize":
-            if settings.notes_is_fallback or settings.research_root is None:
-                _print(_configuration_required(settings))
+            if _needs_onboarding(settings):
+                _print(_onboarding_required(settings))
                 return 0
             _print(finalize_job(settings, Path(args.job_dir), replace_legacy=args.replace_legacy))
             return 0

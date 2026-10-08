@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.1 - 2026-10-08
+
+First-use configuration and local-storage topology polish.
+
+- Add explicit `onboarding` before first collection so storage choices are surfaced instead of hidden behind fallback paths.
+- Add `configure --use-defaults` to explicitly accept project-local `notes/github` and `research/github` and record them in ignored `config/local.json`.
+- Allow `notes_root + vault_root + notes_subdir` to coexist; recommend project-local notes as physical truth with a Vault child Junction for Obsidian display.
+- Preserve legacy direct-vault configurations and prevent `--use-defaults` from silently moving existing notes.
+- Add Obsidian mapping diagnostics: direct_vault, ok, mapping_missing, mapping_mismatch, and not_configured.
+- Keep Research Packet storage outside Obsidian by default and add `research/` to gitignore.
+- Add `docs/CONFIGURATION.md` as the configuration/topology contract.
+- Add `docs/V0.5-BACKLOG.md` to record deferred future capabilities without implementing them.
+- Update canonical Skill, Agent handoff docs, quickstart, release checklist, and version metadata to v0.4.1.
+
 ## 0.4.0 - 2026-10-08
 
 Durable Knowledge Capture update.

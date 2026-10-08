@@ -122,7 +122,7 @@ def test_prepare_refuses_fallback_without_creating_runtime(tmp_path: Path):
     project = tmp_path / "project"
     settings = Settings(
         project,
-        project / "notes" / "github" / "00-Inbox",
+        project / "notes" / "github",
         project / ".runtime" / "github-learning",
         project / "config/local.json",
         True,
@@ -138,7 +138,7 @@ def test_prepare_refuses_fallback_without_creating_runtime(tmp_path: Path):
 
     result = prepare_job(settings, resolved, bundle)
 
-    assert result["status"] == "configuration_required"
+    assert result["status"] == "onboarding_required"
     assert not settings.runtime_root.exists()
 
 
@@ -160,8 +160,8 @@ def test_configure_notes_writes_explicit_vault_config(tmp_path: Path):
 def test_load_settings_without_config_uses_fallback_but_marks_it(tmp_path: Path):
     settings = load_settings(tmp_path)
     assert settings.notes_is_fallback is True
-    assert settings.notes_source == "fallback"
-    assert settings.notes_root == tmp_path / "notes" / "github" / "00-Inbox"
+    assert settings.notes_source == "project_default"
+    assert settings.notes_root == tmp_path / "notes" / "github"
 
 
 def test_auth_prefers_environment_token(monkeypatch):

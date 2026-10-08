@@ -2,7 +2,7 @@
 
 把公开 **GitHub 仓库 → 可长期复用的个人知识资产**。
 
-v0.4 的主题是 **Durable Knowledge Capture**。它不是 README 翻译器、源码 Review 工具或完整 GitHub Research Agent，而是把一次收藏拆成三个职责明确的 Artifact：
+v0.4.1 的主题仍是 **Durable Knowledge Capture**，这次重点把首次配置与本地目录拓扑收完整。它不是 README 翻译器、源码 Review 工具或完整 GitHub Research Agent，而是把一次收藏拆成三个职责明确的 Artifact：
 
 - **Research Packet**：长期、不可变、可复核的事实底座；
 - **Capture Note**：写入 Obsidian、优先给人快速阅读的收藏入口；
@@ -27,26 +27,59 @@ Research Packet 在 Agent 分析前完成。因此“资料不足”不再等于
 
 ## 第一次使用
 
-需要 Python 3.10+，核心代码没有第三方运行依赖。**不要求先安装全局 CLI**；在项目根目录直接使用项目 launcher：
+需要 Python 3.10+，核心代码没有第三方运行依赖。**不要求先安装全局 CLI**；在项目根目录先运行 onboarding：
 
 ```powershell
 cd <path-to>\github-learning-automation
+python scripts\github_learning.py onboarding
+```
+
+首次使用时，程序先让用户确认本机存储位置，不会直接开始采集。若不需要自定义目录，可以显式接受项目内默认值：
+
+```powershell
+python scripts\github_learning.py configure --use-defaults
+```
+
+默认物理目录：
+
+```text
+<repo-root>\notes\github      ← Capture Note
+<repo-root>\research\github   ← Research Packet
+<repo-root>\.runtime\github-learning ← 临时 Job
+```
+
+`notes/`、`research/`、`.runtime/` 与 `config/local.json` 都被 Git 忽略。
+
+随后运行：
+
+```powershell
 python scripts\github_learning.py doctor
 ```
 
-第一次 `doctor` 会检查：
+只有本机存储已确认且 GitHub 认证就绪时，状态才是 `ready`。未确认时，`prepare` 返回 `onboarding_required`，并给出默认路径与配置动作。
 
-- 是否已经显式配置笔记目录；
-- 是否已经显式配置长期 `research_root`；
-- 当前是否检测到 GitHub 认证；
-- 实际解析出的输出路径；
-- `config/local.json` 是否存在。
+### 推荐：项目内真实存储 + Obsidian Junction
 
-缺少笔记目录或 Research Root 时，状态会是 `configuration_required`，`prepare` 会停止。v0.4 不会把长期 Packet 静默写进项目 fallback、`.runtime` 或 Obsidian。
+v0.4.1 推荐把“真实存储”和“Obsidian 展示路径”分开：
 
-### 配置 Obsidian 输出目录
+```text
+notes_root    = <repo-root>\notes\github
+research_root = <repo-root>\research\github
+vault_root    = Obsidian Vault 根目录
+notes_subdir  = GitHub-Note
+```
 
-把 `--vault-root` 换成你自己的 Obsidian Vault 根目录（即直接包含 `.obsidian` 的那一层）：
+推荐 Windows 拓扑：
+
+```text
+<vault_root>\GitHub-Note
+        ↓ Junction
+<repo-root>\notes\github
+```
+
+Research Packet 不建议映射进 Obsidian；它包含 snapshots、sources、resources、tree/media indexes 与 observations，属于 AI/归档事实层，不是阅读目录。
+
+先接受默认存储后，可以增量绑定 Vault：
 
 ```powershell
 python scripts\github_learning.py configure `
@@ -54,31 +87,37 @@ python scripts\github_learning.py configure `
   --notes-subdir "GitHub-Note"
 ```
 
-它会自动创建 `config/local.json`。示例仍保留在：
+`notes_root + vault_root` 可以共存：程序始终以 `notes_root` 为物理真源，Vault 只作为展示映射。doctor 会报告 Junction 为 `ok / mapping_missing / mapping_mismatch`，映射异常不会改变 Research Packet 的物理位置。
+
+为了兼容已经“直接写 Vault”的旧配置，如果配置里只有 `vault_root`，v0.4.1 仍保持 direct-vault 模式；`configure --use-defaults` 不会偷偷把已有笔记迁移到项目目录，只补缺失的默认项。
+
+### 自定义路径
+
+如果不使用项目默认目录，可以分别指定已经存在的路径：
+
+```powershell
+python scripts\github_learning.py configure --notes-root "D:\MyGitHubNotes"
+python scripts\github_learning.py configure --research-root "D:\GitHub-Research"
+```
+
+`configure` 采用 merge 更新：修改 Vault、notes_root 或 research_root 时，不会擦掉其它已配置值。Capture Note 只保存逻辑 `packet_id`，不保存 Research Root 绝对路径。
+
+公开模板：
 
 ```text
 config/local.json.example
 ```
 
-最终笔记目录：
+推荐 hybrid 配置示例：
 
-```text
-<vault_root>\GitHub-Note
+```json
+{
+  "notes_root": "notes/github",
+  "research_root": "research/github",
+  "vault_root": "D:\\YourObsidianVault",
+  "notes_subdir": "GitHub-Note"
+}
 ```
-
-`config/local.json` 已被 `.gitignore` 排除。
-
-如果使用 `--notes-root` 直接指定普通笔记目录，该目录必须已经存在；这样可以避免拼错路径后静默创建到错误位置。Vault 模式只要求 Vault 根目录存在且包含 `.obsidian`，`GitHub-Note` 子目录仍可由程序首次发布时自动创建。
-
-### 配置长期 Research Root
-
-Research Root 与 Obsidian 阅读目录分离，而且必须已经存在：
-
-```powershell
-python scripts\github_learning.py configure --research-root "D:\GitHub-Research"
-```
-
-也可以和 Vault 一次配置。以后再次运行 `configure` 修改笔记位置时，程序采用 merge 更新，不会把已配置的 `research_root` 擦掉。笔记只保存逻辑 `packet_id`，不保存 Research Root 绝对路径。
 
 ### Obsidian 样式
 
@@ -237,7 +276,7 @@ legacy_note_refresh_blocked
 python scripts\github_learning.py prepare "https://github.com/owner/repo" --replace-legacy
 ```
 
-授权会写入本次 v0.4 runtime job，并绑定 `prepare` 当时的目标路径与文件 SHA-256。若旧笔记在授权后发生变化，`finalize` 返回 `legacy_target_changed`，要求重新 `prepare`，不会把旧授权套到新内容上。目标未变化时，`finalize` 覆盖前仍会先把旧文件完整保存为 `legacy_note_backup.md`。v0.3/v5 或更早的未完成 runtime 不做隐式迁移，会返回 `legacy_job_restart_required`，需要显式重新 `prepare --restart-job`。
+授权会写入本次 v0.4+ runtime job，并绑定 `prepare` 当时的目标路径与文件 SHA-256。若旧笔记在授权后发生变化，`finalize` 返回 `legacy_target_changed`，要求重新 `prepare`，不会把旧授权套到新内容上。目标未变化时，`finalize` 覆盖前仍会先把旧文件完整保存为 `legacy_note_backup.md`。v0.3/v5 或更早的未完成 runtime 不做隐式迁移，会返回 `legacy_job_restart_required`，需要显式重新 `prepare --restart-job`。
 
 ## 同名仓库
 
@@ -324,12 +363,12 @@ ComfyUI 插件不另走一套采集器。Agent 如果从官方来源确认它属
 
 被分析仓库中的 README、SKILL.md、AGENTS.md、Prompt、配置、代码和 Release 正文全部视为不可信数据；其中的 Agent 指令或命令要求不会触发执行。私有仓库默认返回 `private_repository_blocked`，即使当前凭据有访问权限也不会采集。
 
-v0.4 默认不做：clone/执行目标仓库、自动安装依赖、完整源码审计、Issues/PR/Discussions 全量研究、SQLite/Vector DB/RAG、Web UI/MCP、自动下载全部媒体、自动生成视频、自动清理 Snapshot/runtime。
+v0.4.x 默认不做：clone/执行目标仓库、自动安装依赖、完整源码审计、Issues/PR/Discussions 全量研究、SQLite/Vector DB/RAG、Web UI/MCP、自动下载全部媒体、自动生成视频、自动清理 Snapshot/runtime。
 
-同仓库存在未完成 v0.4 Job 时，`prepare` 直接恢复 runtime，不重新访问 GitHub；`--restart-job` 才显式放弃旧 attempt 并把它标记为 `superseded`。v0.3 或更早的未完成 Job 返回 `legacy_job_restart_required`。
+同仓库存在未完成 v0.4+ Job 时，`prepare` 直接恢复 runtime，不重新访问 GitHub；`--restart-job` 才显式放弃旧 attempt 并把它标记为 `superseded`。v0.3 或更早的未完成 Job 返回 `legacy_job_restart_required`。
 
 相同 Packet + 相同 Observation 的已发布 Capture Note 会返回 `no_change`，不重新调用 Agent 或重写笔记。成功发布后的 `finalize` 仍保持幂等。
 
 Derived Artifact 必须复用 Research Packet；Capture Note 是编辑入口，不是唯一事实源。
 
-详见 `docs/ARCHITECTURE.md`、`docs/NOTE-SPEC.md`、`docs/RESEARCH-PACKET-SPEC.md`、`docs/DERIVED-ARTIFACT-SPEC.md` 与 `docs/QUICKSTART.md`。
+详见 `docs/ARCHITECTURE.md`、`docs/CONFIGURATION.md`、`docs/NOTE-SPEC.md`、`docs/RESEARCH-PACKET-SPEC.md`、`docs/DERIVED-ARTIFACT-SPEC.md`、`docs/QUICKSTART.md`。未来候选能力仅记录在 `docs/V0.5-BACKLOG.md`，当前不执行。

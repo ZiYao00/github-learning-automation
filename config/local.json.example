@@ -1,5 +1,6 @@
 {
-  "vault_root": "D:\\Notes\\MyVault",
-  "notes_subdir": "GitHub-Note",
-  "research_root": "D:\\GitHub-Research"
+  "notes_root": "notes/github",
+  "research_root": "research/github",
+  "vault_root": "D:\\YourObsidianVault",
+  "notes_subdir": "GitHub-Note"
 }

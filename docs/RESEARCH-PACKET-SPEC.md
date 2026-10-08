@@ -130,7 +130,7 @@ media-index.json 默认只索引图片、视频、音频、PDF 等二进制资�
 
 Latest Release 等会随时间变化的内容不属于 commit Snapshot，必须保存在 repo 级 observations/。
 
-V1 Observation 只包含仓库平台元数据和 Latest Release。Issues、PR、Discussions、外部网页、社会化数据不属于 v0.4 默认采集范围。
+V1 Observation 只包含仓库平台元数据和 Latest Release。Issues、PR、Discussions、外部网页、社会化数据不属于 v0.4.x 默认采集范围。
 
 ## Integrity
 
@@ -158,7 +158,7 @@ Research Packet 中的 README、SKILL.md、AGENTS.md、配置、Prompt 和代码
 
 ## Retention
 
-v0.4 不自动删除：
+v0.4.x 不自动删除：
 
 - immutable Snapshot；
 - failed staging；

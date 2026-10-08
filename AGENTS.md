@@ -1,6 +1,6 @@
 # GitHub 项目长期收藏与学习
 
-本项目把公开 GitHub 仓库整理成可长期复用的知识资产。v0.4 采用三层模型：Research Packet（事实底座）→ Capture Note（人类阅读入口）→ Derived Artifact（以后按需生成）。
+本项目把公开 GitHub 仓库整理成可长期复用的知识资产。v0.4.1 采用三层模型：Research Packet（事实底座）→ Capture Note（人类阅读入口）→ Derived Artifact（以后按需生成），并补齐 onboarding、项目内默认存储与 Obsidian hybrid 映射。
 
 ## 入口
 
@@ -17,21 +17,46 @@ python scripts\github_learning.py <command>
 真实采集前先执行：
 
 ```powershell
+python scripts\github_learning.py onboarding
+```
+
+首次没有本机配置时，onboarding 只展示建议默认值：
+
+```text
+<repo-root>\notes\github
+<repo-root>\research\github
+```
+
+用户接受默认值后执行：
+
+```powershell
+python scripts\github_learning.py configure --use-defaults
+```
+
+然后再运行：
+
+```powershell
 python scripts\github_learning.py doctor
 ```
 
-- `configuration_required`：笔记目录或长期 `research_root` 未显式配置，停止并配置。
+状态规则：
+
+- `action_required` / `onboarding_required`：存储路径尚未由用户确认；停止采集并处理 actions。
 - `auth_recommended`：未检测到 GitHub 登录；优先使用 `gh auth login`，匿名模式必须显式接受。
 - `ready`：可以继续。
 
-配置必须同时覆盖 Reading Layer 与 Archive Layer：
+推荐 hybrid 配置：
 
-```powershell
-python scripts\github_learning.py configure --vault-root "D:\Notes\MyVault" --notes-subdir "GitHub-Note"
-python scripts\github_learning.py configure --research-root "D:\GitHub-Research"
+```text
+notes_root = 项目内 notes/github（物理真源）
+research_root = 项目内 research/github（长期 Packet）
+vault_root + notes_subdir = Obsidian 展示位置
+Vault child → Junction → notes_root
 ```
 
-`configure` 是 merge 更新；以后修改笔记位置不得擦掉 `research_root`。不要把任何真实 Vault / Research Root 路径写进公开代码或文档。
+`notes_root + vault_root` 可以共存；Research Root 不建议映射进 Obsidian。已有 direct-vault 配置继续兼容，`--use-defaults` 不得偷偷迁移已有笔记。
+
+`configure` 是 merge 更新；以后修改 Vault、notes_root 或 research_root 不得擦掉其它值。不要把任何真实 Vault / Research Root 路径写进公开代码或文档。
 
 程序可复用 `GITHUB_TOKEN` / `GH_TOKEN` 或 `gh auth token`，不得把 Token 写入仓库、配置、日志、笔记或回复。私有仓库默认阻断。
 
@@ -41,10 +66,10 @@ python scripts\github_learning.py configure --research-root "D:\GitHub-Research"
 
 ## 正式流程
 
-1. `doctor` 必须允许继续。
+1. 首次先运行 `onboarding`；之后 `doctor` 必须允许继续。
 2. 默认运行 `prepare <GitHub URL>`。仓库文件固定到默认分支 HEAD revision；Source Planner 分离 analysis sources、archived resources、tree index 与 media index。
 3. `prepare` 必须先完成 Research Packet staging、SHA-256/schema 校验和 immutable archive，再进入 Agent 分析。
-4. 若返回 `in_progress`，直接恢复 v0.4 runtime，不重新访问 GitHub。v0.3/v5 或更早活动 Job 返回 `legacy_job_restart_required`；只有明确放弃旧 attempt 时才用 `--restart-job`。
+4. 若返回 `in_progress`，直接恢复 v0.4+ runtime，不重新访问 GitHub。v0.3/v5 或更早活动 Job 返回 `legacy_job_restart_required`；只有明确放弃旧 attempt 时才用 `--restart-job`。
 5. 只有用户明确要第二篇独立笔记时才使用 `--new-note`。
 6. 读取 `agent_handoff.md`、`source_manifest.json`、manifest 指向的 `sources/`、`observation.json`、`source_bundle.md` 与 `analysis.json`。默认不要全文读取 `resources/`。
 7. 填写 `why_save`、`content_profile`、紧凑的 knowledge/project map、必要的 resource index，以及来源明确支持的 requirements / compatibility / deployment / architecture / project_status。

@@ -1,6 +1,6 @@
 # Derived Artifact Spec
 
-Derived Artifact 是从已经保存的 GitHub 知识资产继续生成的按需产物。v0.4 只定义输入契约和边界，不实现完整视频生成器。
+Derived Artifact 是从已经保存的 GitHub 知识资产继续生成的按需产物。v0.4.x 只定义输入契约和边界，不实现完整视频生成器。
 
 ## Supported artifact classes
 
@@ -69,7 +69,7 @@ Derived Artifact 不允许重新实现第二套 GitHub Collector。
 
 ## Media Brief boundary
 
-v0.4 不生成：
+v0.4.x 不生成：
 
 - 成片；
 - Storyboard；

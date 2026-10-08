@@ -83,7 +83,7 @@ def _find_in_progress_job(settings: Settings, full_name: str) -> dict[str, Any] 
         }
     return {
         "status": "in_progress",
-        "message": "检测到同一仓库尚未完成的 v0.4 runtime job；prepare 可直接恢复，不需要重新采集 GitHub。",
+        "message": "检测到同一仓库尚未完成的 v0.4+ runtime job；prepare 可直接恢复，不需要重新采集 GitHub。",
         "repository": full_name,
         "job_id": str(job.get("job_id") or job_dir.name),
         "job_dir": str(job_dir),
@@ -108,14 +108,18 @@ def _configuration_issue(settings: Settings) -> dict[str, Any] | None:
     issues: list[str] = []
     if settings.notes_is_fallback:
         issues.append("notes_root")
-    if settings.research_root is None:
+    if settings.research_is_fallback:
         issues.append("research_root")
     if not issues:
         return None
     return {
-        "status": "configuration_required",
-        "message": "v0.4 需要同时显式配置笔记目录与长期 Research 目录。",
+        "status": "onboarding_required",
+        "message": "v0.4.1 首次采集前需要确认本机 notes_root 与 research_root；可显式接受项目默认目录。",
         "missing": issues,
+        "defaults": {
+            "notes_root": str(settings.notes_root),
+            "research_root": str(settings.research_root) if settings.research_root else "",
+        },
         "local_config": str(settings.local_config_path),
     }
 

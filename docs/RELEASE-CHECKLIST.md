@@ -5,7 +5,7 @@
 - `pyproject.toml` 与 `github_learning.__version__` 一致。
 - USER_AGENT 从包版本派生。
 - CHANGELOG 已记录本次版本。
-- `config/local.json.example` 覆盖 note destination + research_root，但不包含真实本地路径。
+- `config/local.json.example` 覆盖 notes_root + research_root + Vault hybrid 示例，但不包含真实本地路径。
 - 无无关文件、本地秘密、Token 或临时测试产物进入提交。
 - `temp/run-obsidian-snippets-migration.cmd` 若仍为用户现场未跟踪文件，继续保持排除。
 
@@ -13,8 +13,8 @@
 
 至少验证：
 
-- `doctor` 的 configuration_required / auth_recommended / ready。
-- notes 与 research_root 都是显式配置门禁；configure merge 不互相擦除。
+- `onboarding` 的 action_required / auth_recommended / ready，以及 `prepare` 的 onboarding_required 门禁。
+- 新用户默认路径只提示不静默写入；`configure --use-defaults` 创建项目内 `notes/github + research/github`；configure merge 不互相擦除。
 - Python、Node/Web、Docker、Agent/Skill、极简仓库 Source Planner 行为。
 - 所有仓库文件来源固定到同一 revision。
 - private_repository_blocked。
@@ -32,7 +32,7 @@
 至少验证：
 
 - Job v6：collected → packet_archived → analysis_required → analysis_complete → published。
-- v0.4 in_progress 恢复不重复 GitHub collection。
+- v0.4+ in_progress 恢复不重复 GitHub collection。
 - v0.3/v5 活动 Job 返回 `legacy_job_restart_required`。
 - `--restart-job` 保留旧 Job 并标记 superseded。
 - Evidence Map 强制覆盖所有 `coverage_required=true` source。
@@ -64,10 +64,12 @@ py -3.12 scripts/build_agent_skill_packages.py --check
 - `AGENTS.md`
 - `README.md`
 - `docs/ARCHITECTURE.md`
+- `docs/CONFIGURATION.md`
 - `docs/RESEARCH-PACKET-SPEC.md`
 - `docs/NOTE-SPEC.md`
 - `docs/DERIVED-ARTIFACT-SPEC.md`
 - `docs/QUICKSTART.md`
+- `docs/V0.5-BACKLOG.md`
 - `skill/github-note/SKILL.md`
 
 ## 自动验证
@@ -97,4 +99,4 @@ Release 属于独立授权动作。只有用户明确要求时才：
 - 创建 tag；
 - 创建 GitHub Release。
 
-v0.4 第一次正式 Release 前还应检查 GitHub Description、License、README 与公开仓库预期。
+v0.4.1 正式 Release 前还应检查 GitHub Description、License、README、默认目录 onboarding 行为与公开仓库预期。

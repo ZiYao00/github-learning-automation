@@ -2,7 +2,7 @@
 
 ## Product boundary
 
-github-learning-automation v0.4 是一个 GitHub Knowledge Capture 工具，不是完整 GitHub Research Agent。
+github-learning-automation v0.4.x 是一个 GitHub Knowledge Capture 工具，不是完整 GitHub Research Agent；v0.4.1 在 v0.4 的 Durable Knowledge Capture 基础上补齐首次配置与本地存储拓扑。
 
 默认目标：
 
@@ -73,7 +73,7 @@ Source Planner 决定两件不同的事：
 - authority；
 - coverage_required。
 
-v0.4 继续使用有限分析预算，避免上下文爆炸；长期归档使用独立预算。
+v0.4.x 继续使用有限分析预算，避免上下文爆炸；长期归档使用独立预算。
 
 Agent/Skill 仓库额外识别：
 
@@ -132,7 +132,7 @@ v0.3 或更早的活动 Job 不做隐式迁移；返回 legacy_job_restart_requi
 - 继续归档/验证 Packet；
 - 不重新请求 GitHub。
 
-如果同仓库存在未完成 v0.4 Job，prepare 直接恢复它。
+如果同仓库存在未完成 v0.4+ Job，prepare 直接恢复它。
 
 --restart-job 是显式放弃旧 runtime attempt；旧 Job 保留并标记 superseded。
 
@@ -163,7 +163,7 @@ Evidence Map 提供机器可验证的 Source → Note section grounding。
 
 coverage_review 继续作为 Agent 的语义复核。
 
-v0.4 不实现 sentence/line-level Grounded Claims。
+v0.4.x 不实现 sentence/line-level Grounded Claims。
 
 ## Capture Note
 
@@ -201,16 +201,43 @@ existing observation_fingerprint == current observation fingerprint
 - 不进入 Agent analysis；
 - 不重写笔记。
 
-v0.4 不做 section-level incremental regeneration。
+v0.4.x 不做 section-level incremental regeneration。
 
 ## Configuration
 
-本机必须显式配置：
+v0.4.1 把本机路径配置改为 onboarding + hybrid topology。
 
-- notes_root，或 vault_root + notes_subdir；
-- research_root。
+首次 `load_settings` 只推导建议默认值：
 
-configure 使用 merge 更新，重新配置笔记目录不能擦掉 research_root。
+- `<repo-root>/notes/github`；
+- `<repo-root>/research/github`。
+
+但只要用户还没有显式接受或配置这些路径，`notes_is_fallback / research_is_fallback` 就保持 true，`prepare` 返回 `onboarding_required`，不会静默写入。
+
+显式接受默认值：
+
+~~~powershell
+python scripts\github_learning.py configure --use-defaults
+~~~
+
+这会创建缺失的项目内目录并写入被 Git 忽略的 `config/local.json`。
+
+推荐正式拓扑：
+
+~~~text
+notes_root    = <repo-root>/notes/github
+research_root = <repo-root>/research/github
+vault_root/notes_subdir = Obsidian 展示路径
+Vault child -> Junction -> notes_root
+~~~
+
+`notes_root + vault_root` 可以共存；一旦 notes_root 存在，它就是 Capture Note 的物理真源。Vault 仅提供 Obsidian 映射元数据。
+
+兼容旧配置：如果只有 `vault_root`，仍保持 direct-vault 模式。接受默认值只补缺失项，不会自动迁移旧笔记。
+
+Research Packet 不建议映射进 Obsidian。
+
+`configure` 使用 merge 更新，更新 Vault、notes_root 或 research_root 不能擦掉其它已配置值。
 
 可用环境变量：
 
@@ -240,7 +267,7 @@ Capture Note 是 editorial context，不是唯一事实源。
 
 对外发布内容未来默认要求 Fresh Check。
 
-v0.4 只定义接口，不实现完整视频生成流程。
+v0.4.x 只定义接口，不实现完整视频生成流程。
 
 ## Obsidian
 
@@ -260,7 +287,7 @@ managed region 之后的“我的记录”属于用户，不得被 refresh 覆�
 - source insufficient：发布 Minimal Capture Note；
 - no_change：正常完成状态。
 
-## Non-goals for v0.4
+## Non-goals for v0.4.x
 
 - SQLite / vector DB / RAG / BM25；
 - Web UI / MCP server；

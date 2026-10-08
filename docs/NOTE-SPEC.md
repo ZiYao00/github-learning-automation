@@ -19,7 +19,7 @@ Capture Note 同时满足两个目标：
 
 ## Frontmatter contract
 
-v0.4 managed note 至少支持：
+v0.4.x managed note 至少支持：
 
 ~~~yaml
 repo: "owner/repo"

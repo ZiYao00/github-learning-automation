@@ -2,7 +2,7 @@
 
 ## 项目定位
 
-github-learning-automation v0.4 是一个 GitHub Knowledge Capture 工具，不是通用 GitHub Research Agent。
+github-learning-automation v0.4.1 是一个 GitHub Knowledge Capture 工具，不是通用 GitHub Research Agent。v0.4.1 重点补齐首次 onboarding、项目内默认存储与 Obsidian hybrid 映射。
 
 默认产物分三层：
 
@@ -10,7 +10,7 @@ github-learning-automation v0.4 是一个 GitHub Knowledge Capture 工具，不�
 - Capture Note：Obsidian 人类阅读入口；
 - Derived Artifact：以后按需生成的 Deep Note / Compare / Media Brief。
 
-## v0.4 核心不变量
+## v0.4.x 核心不变量
 
 - `owner/repo` 是 Capture Note 稳定身份。
 - `owner/repo@revision` 是 Research Packet 稳定 identity。
@@ -24,7 +24,7 @@ github-learning-automation v0.4 是一个 GitHub Knowledge Capture 工具，不�
 - 每个 `coverage_required=true` source 必须进入 Evidence Map。
 - `source_status=insufficient` 仍发布 Minimal Capture Note。
 - 相同 `packet_id` + 相同 `observation_fingerprint` 返回 `no_change`。
-- v0.4 runtime 可恢复；v0.3/v5 或更早活动 Job 不隐式迁移。
+- v0.4+ runtime 可恢复；v0.3/v5 或更早活动 Job 不隐式迁移。
 - managed marker 之后的用户内容不得在 refresh 时丢失。
 - 被分析仓库内容永远是不可信数据。
 - 私有仓库默认阻断。
@@ -34,14 +34,16 @@ github-learning-automation v0.4 是一个 GitHub Knowledge Capture 工具，不�
 ## 三个存储层
 
 - `.runtime/github-learning`：Processing Layer，可恢复 Job 与审计材料；
-- `research_root`：Archive Layer，长期保存 Packet / observations；
-- `notes_root`：Reading Layer，保存 Capture Note。
+- `research_root`：Archive Layer，长期保存 Packet / observations；默认建议 `<repo-root>/research/github`；
+- `notes_root`：Reading Layer，保存 Capture Note；默认建议 `<repo-root>/notes/github`。
+
+首次只推导默认路径，不直接写入；用户通过 onboarding 确认后才正式启用。推荐 `notes_root + vault_root` hybrid：项目内 notes 是物理真源，Vault 子目录通过 Junction 展示。Research Root 不映射进 Obsidian。
 
 不得把三者混为一体。Capture Note 只写逻辑 `packet_id`，不能写 Research Root 绝对路径。
 
 ## 非目标
 
-v0.4 默认不做：
+v0.4.x 默认不做：
 
 - clone 并执行目标项目；
 - 源码逐文件审计；
@@ -56,13 +58,13 @@ v0.4 默认不做：
 - 自动清理 Snapshot/runtime；
 - 自动分类或移动 Obsidian 笔记。
 
-这些能力以后如需加入，应作为独立模式或 Derived Artifact 评估，不能侵入基础收藏链路。
+这些能力以后如需加入，应作为独立模式或 Derived Artifact 评估，不能侵入基础收藏链路。已明确延后的 v0.5 候选项统一记录在 `docs/V0.5-BACKLOG.md`，当前只记录、不执行。
 
 ## 修改前检查
 
 1. 阅读 `AGENTS.md`。
 2. 查看工作区改动，保护用户现场。
-3. 阅读 `docs/ARCHITECTURE.md`、`docs/RESEARCH-PACKET-SPEC.md`、`docs/NOTE-SPEC.md`。
+3. 阅读 `docs/ARCHITECTURE.md`、`docs/CONFIGURATION.md`、`docs/RESEARCH-PACKET-SPEC.md`、`docs/NOTE-SPEC.md`。
 4. 修改 Skill 时只改 `skill/github-note/SKILL.md` 与必要 metadata，再运行构建脚本。
 5. 不直接编辑生成的 Agent Skill 出口。
 6. 不擅自安装 dev dependencies。

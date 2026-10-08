@@ -1,20 +1,44 @@
 # Quickstart & Regression
 
-## 1. Configure
+## 1. Onboarding / Configure
 
-v0.4 requires both a note destination and a long-term Research Root.
+v0.4.1 introduces an explicit first-use onboarding gate.
+
+~~~powershell
+python scripts\github_learning.py onboarding
+~~~
+
+A new installation should return `action_required` and show the suggested project-local defaults without creating anything yet:
+
+~~~text
+<repo-root>/notes/github
+<repo-root>/research/github
+~~~
+
+Accept them explicitly with:
+
+~~~powershell
+python scripts\github_learning.py configure --use-defaults
+~~~
+
+That command creates the missing project-local directories and writes them to the ignored `config/local.json`.
+
+Recommended hybrid setup then adds Vault metadata without replacing `notes_root`:
 
 ~~~powershell
 python scripts\github_learning.py configure --vault-root "D:\Notes\MyVault" --notes-subdir "GitHub-Note"
 ~~~
 
-~~~powershell
-python scripts\github_learning.py configure --research-root "D:\GitHub-Research"
+Expected topology:
+
+~~~text
+<vault_root>/GitHub-Note -> Junction -> <repo-root>/notes/github
+<repo-root>/research/github remains outside Obsidian
 ~~~
 
-Research Root must already exist.
+Custom `notes_root` / `research_root` values must already exist. `configure` uses merge updates, so configuring Vault metadata later must preserve both storage roots.
 
-configure uses merge updates: changing the note destination later must not erase research_root.
+Compatibility rule: an existing direct-vault config remains direct-vault. `--use-defaults` only fills missing defaults and must not silently move existing notes.
 
 ## 2. Doctor
 
@@ -24,9 +48,11 @@ python scripts\github_learning.py doctor
 
 Expected ready state requires:
 
-- explicit notes configuration;
-- explicit research_root;
+- notes storage confirmed by the user;
+- research storage confirmed by the user;
 - GitHub authentication.
+
+Before confirmation, prepare returns `onboarding_required`, not a silent fallback write.
 
 Without authentication, use gh auth login, or explicitly choose --allow-anonymous for a prepare.
 
@@ -99,7 +125,7 @@ The second case must create a Minimal Capture Note with a visible “待进一�
 
 ## 6. Refresh / no-op
 
-After publishing a v0.4 Capture Note, prepare the exact same revision + observation again.
+After publishing a v0.4+ Capture Note, prepare the exact same revision + observation again.
 
 Expected:
 
@@ -113,7 +139,7 @@ When revision changes, a new immutable Packet is created and the same Capture No
 
 ## 7. Resume
 
-Interrupt a v0.4 job after runtime material exists or after Packet archive.
+Interrupt a v0.4+ job after runtime material exists or after Packet archive.
 
 A later prepare for the same repo should resume that job without a second GitHub collection.
 
