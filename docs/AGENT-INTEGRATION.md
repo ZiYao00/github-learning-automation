@@ -7,10 +7,10 @@
 1. 首次运行 `onboarding`。未确认本机存储时返回 `action_required`；用户可以显式接受项目默认 `notes/github + research/github`，也可以配置自定义路径。
 2. 存储确认后运行 `doctor`，检查 notes/research 解析结果、Vault 映射和 GitHub 认证。
 3. `prepare` 先做 note/job preflight，再固定 HEAD revision、采集分析来源和归档资源。
-4. runtime Job v6 完成 Research Packet staging、hash/schema validation 和 immutable archive。
+4. 新 runtime Job v7（写作契约 V2.2）完成 Research Packet staging、hash/schema validation 和 immutable archive；原有 v6 Job 保留续跑兼容。
 5. Packet 成功后才进入 `analysis_required`。
 6. Agent 读取 `source_manifest.json`、`sources/`、`observation.json`、`source_bundle.md` 与 `agent_handoff.md`；默认不全文读取 `resources/`。
-7. Agent 为新 Job 填写 `editorial_headline` / `editorial_body` 作为自然产品解读，仍需填写 `why_save`、`content_profile`、adaptive map、resource index，并完成 Evidence Map。
+7. Agent 为新 Job 保留 `editorial_contract_version: "2.2"` 并填写 `editorial_headline` / `editorial_body` 作为自然产品解读，仍需填写 `why_save`、`content_profile`、adaptive map、resource index；Evidence Map、`coverage_review` 与五维 `editorial_review` 均须完成。新 Job 不能退回旧章节模板。
 8. `source_status=sufficient` 时必须通过 Evidence Map + `coverage_review`；`insufficient` 时仍允许发布 Minimal Capture Note。
 9. `finalize` 返回 `note_ready` 才表示笔记发布完成；新阅读笔记最多从 pinned README 保存并引用一张安全可验证的正文首图；失败退回无图阅读，不影响主流程。相同 Packet + Observation 的已发布笔记可在 `prepare` 阶段直接返回 `no_change`。
 
@@ -92,6 +92,8 @@ py -3.12 scripts/build_agent_skill_packages.py
 py -3.12 scripts/build_agent_skill_packages.py --check
 ~~~
 
+生成器还会同步 `docs/NOTE-SPEC.md`、最终 ODS Golden Sample 和机器可检查的 `references/contract.json` 到每一个 Skill 适配目录，并生成包含全部必需内容的 `release/skill.zip`。`--check` 必须验证 ZIP 条目与哈希，不能只比较 `SKILL.md`。独立 ChatGPT 安装需使用新 ZIP 重新导入；仅更新磁盘文件**不会**自动替换已有网页 Skill。`references/contract.json` 记录 `new_job_version=7` 和 `editorial_contract_version=2.2`，必须与 `doctor` 返回值一致。首次执行与项目 `doctor` 返回的契约版本核对，不一致则停止并更新。
+
 生成出口：
 
 - `github-note/`；
@@ -100,4 +102,4 @@ py -3.12 scripts/build_agent_skill_packages.py --check
 - `agent-skills/claude/github-note/`；
 - `agent-skills/workbuddy/github-note/`。
 
-禁止直接编辑生成出口的 SKILL.md。
+禁止直接编辑生成出口的 SKILL.md 或派生 `references/`，只改 `skill/github-note/SKILL.md` 与 `docs/` 真源。外部 Agent 若不能连接项目及 Obsidian，Skill 只能指导、不能代替本地工作流实际写笔记。

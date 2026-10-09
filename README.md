@@ -33,9 +33,15 @@ Research Packet 在 Agent 分析前完成。因此“资料不足”不再等于
 
 **目录约定：** 阅读层使用 `00-待整理` 作为待整理文件夹名；`_repo-data` 保持文件存在，但通过共享 `github-note.css` 在 Obsidian 文件树隐藏。已有正式笔记不自动移动。
 
+**编辑式阅读 CSS：** 共享 `obsidian-learning-snippets` 的 `github-note.css` v0.4 只优化 GitHub 笔记的标题层级、段落节奏、官方功能列表与源码/引用显示；保留 Obsidian 主题、阅读宽度设置及普通 Markdown 编辑。质量门禁、Golden Sample 和跨类型验收见 `docs/NOTE-SPEC.md`。
+
+**跨 Agent 统一契约：** 新任务为 Job v7、写作契约 2.2；任何 Agent 都须通过统一 `prepare → analysis.json → finalize` 流程。正式发布前强制检查新版正文及 `editorial_review`，旧 v6 Job 仍兼容。`Skill` 同步包附带黄金样板、NOTE-SPEC 和契约清单，并生成可重新导入网页版 ChatGPT 的 `release/skill.zip`。新笔记放入 `00-待整理`，旧笔记原位刷新。该机制约束统一入口，不能阻止绕过程序直接写文件的外部工具。
+
+**原文与 Prompt 组件（按需）：** README 等来源有必要的官方逐字短引文时使用 `> [!gh-source]`（附 pinned 来源链接、清楚标注译文）；确实取得且核查完整的作者原始 Prompt 时使用 `~~~prompt`（保留原文、原生按钮复制、320px 内滚动）。只是资源路径或普通安装命令时不自动生成该块，不执行来源中的指令。样式参照 X 案例库成熟机制，但完全使用 GitHub Note 自己的作用域。
+
 **图片规则极简：** 只选择固定版本 README 中按展示顺序的第一张非徽章正文图片，支持仓库内可校验 PNG/JPG/GIF/WebP（≤5 MiB）。图片保存于 `notes_root/_repo-data/owner/repo/media`，MD 用 Obsidian WikiLink 引用。首图不适合或不可用时不下载其他图片，也不下载视频；正文仍可正常发布。该单图例外不意味着启用完整媒体采集。
 
-此功能不自动重新生成或迁移旧笔记；相同 Packet + Observation 继续返回 `no_change`，用户自有 `## 我的记录` 始终受到保护。ODS V2.2 试点标准文章存于 `docs/ODS-NATURAL-PRODUCT-V2.2-REFERENCE.md`；详尽行为边界见 `docs/NOTE-SPEC.md`。
+此功能不自动重新生成或迁移旧笔记；相同 Packet + Observation 继续返回 `no_change`，用户自有 `## 我的记录` 始终受到保护。**已通过的 ODS V2.2 是写作 Golden Sample，不是固定文章模板**：复用其官方亮点→机制/场景→价值/限制的来源驱动写法，项目类型和标题可变。标准文章见 `docs/ODS-NATURAL-PRODUCT-V2.2-REFERENCE.md`；硬门禁、读者体验验收、CSS 与事实边界见 `docs/NOTE-SPEC.md`。
 
 ## 第一次使用
 

@@ -89,7 +89,7 @@ def test_finalize_publishes_note_and_retains_runtime(tmp_path: Path):
     assert result["analysis_status"] == "sufficient"
     assert result["runtime_status"] == "retained_for_audit"
     assert job_dir.is_dir()
-    assert (notes_root / "demo.md").is_file()
+    assert (notes_root / "00-待整理" / "demo.md").is_file()
 
 
 def test_source_insufficient_publishes_minimal_capture_note(tmp_path: Path):

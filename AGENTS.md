@@ -91,15 +91,19 @@ Vault child → Junction → notes_root
 
 ## Capture Note
 
-Capture Note V2.2 对**新生成且来源充分**的 Job 默认使用自然产品解读：Agent 写入 `editorial_headline` / `editorial_body`，面向读者解释项目的独特能力、价值、适合场景和重要限制。若 README 明确列出作者的高价值 Features/Highlights/核心模块，必须在正文前部忠实保留简短的官方能力概览，并标注来源归属；隐私、本地运行、无云端或无遥测自述要一并保留官方披露的联网例外、云端/API 可选条件。该概览不等于已实测，不强制所有仓库使用 ODS 的七项分类。旧 Job 无上述字段时沿用原结构，Minimal Note 保持不变。详细写作规范与验收要求以 `docs/NOTE-SPEC.md` 为准。
+**新 Job v7 强制 V2.2 写作契约**（`editorial_contract_version=2.2`）：完整笔记缺少 `editorial_body`、标题或五项 `editorial_review` 时程序必须拒绝发布，不允许旧模板回退；旧 v6 Job 可按原状态恢复。新笔记默认进入 `notes_root/00-待整理`，已存在的按原位刷新，`no_change` 和用户尾部继续受保护。Capture Note V2.2 对**新生成且来源充分**的 Job 默认使用自然产品解读：Agent 写入 `editorial_headline` / `editorial_body`，面向读者解释项目的独特能力、价值、适合场景和重要限制。若 README 明确列出作者的高价值 Features/Highlights/核心模块，必须在正文前部忠实保留简短的官方能力概览，并标注来源归属；隐私、本地运行、无云端或无遥测自述要一并保留官方披露的联网例外、云端/API 可选条件。该概览不等于已实测，不强制所有仓库使用 ODS 的七项分类。旧 Job 无上述字段时沿用原结构，Minimal Note 保持不变。已确认的 Golden Sample 是 `docs/ODS-NATURAL-PRODUCT-V2.2-REFERENCE.md`；复用其证据充分、问题导向、自然阅读的**写法**，不能把 ODS 的技术内容或固定标题套给其它仓库。硬性来源门禁与人工可读性审查以 `docs/NOTE-SPEC.md` 为准。
 
 每个仓库默认最多使用 README 第一张非徽章正文图片（仓库内受支持图片、固定 revision、5 MiB 上限、Git blob 验证）；图片在 `notes_root/_repo-data/owner/repo/media/` 独立存储，笔记通过 WikiLink 引用。没有合适图片不强行配图，视频与全量媒体下载仍延期。
+
+GitHub Note 新增两种**按需呈现**组件：经 pinned source 核对的官方逐字短引文可用 `> [!gh-source]`，标注来源文件并区分译文；真正可完整核对且需要复用的作者原始 Prompt 才使用 `~~~prompt`，代码块内容不得改写或执行。只在 `resource_index` 中见到资源路径，不得臆造 Prompt；普通功能总结和安装命令仍保持普通 Markdown。共享 CSS 真源为 `github-note.css` v0.4，详细条件见 `docs/NOTE-SPEC.md`。
 
 Obsidian 中的待整理文件夹命名为 `00-待整理`（旧 `00-Inbox` 不再使用）；`_repo-data` 只通过共享 `obsidian-learning-snippets/snippets/github-note.css` 在文件树隐藏，保留磁盘文件和引用。目录改名不等于自动迁移正式旧笔记；不要修改共享 Core 或其它项目 CSS。
 
 managed end marker 之后属于用户，默认从 `## 我的记录` 开始，refresh 不得删除或重写。
 
 相同 `packet_id` + 相同 `observation_fingerprint` 的已发布笔记返回 `no_change`，不重新调用 Agent，也不重写 managed region。
+
+**Skill 安装版本安全：** 旧网页版 Skill 不会自动更新，`release/skill.zip` 才是新安装包。所有新的 Agent 应先核对 `doctor` 返回的契约版本（2.2、新 Job v7）与随包 `references/contract.json`，缺少资料或版本不一致则停止。
 
 ## Refresh 安全边界
 

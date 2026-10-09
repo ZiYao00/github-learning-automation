@@ -7,6 +7,13 @@
 - Materialize at most one same-repository README image per note, pinned and Git-blob-verified, stored separately in the reading media layer. No video downloads or media mirroring.
 - Preserve `no_change`, duplicate safety, immutability, user-owned tails, and explicit migration requirements.
 - Add stdlib editorial/first-image policy and lifecycle tests.
+- Promote the user-accepted ODS V2.2 visual-enhanced reference as the sole tracked Golden Sample; preserve the earlier copy in ignored runtime backups.
+- Introduce new Job v7 with explicit editorial contract V2.2, mandatory natural-body and five-part editorial review; preserve v6 in-progress compatibility and no_change behavior.
+- Publish only new Capture Notes under 00-待整理; old notes continue refreshing at original paths.
+- Bundle policy/spec/Golden Sample and machine-readable contract into all Agent Skill adapters and verify the self-contained release/skill.zip.
+- Approve pinned ODS V2.2 as the writing Golden Sample; add factual hard gates, source attribution and cross-repository reading QA, without hardcoding ODS headings or fixed feature counts.
+- Integrate GitHub Note v0.4 from the shared CSS repository: retain the v0.3 editorial layout and add optional `gh-source` source quotes and original `prompt` code blocks (native copy button, 320px scrolling), separately scoped from X-case.
+- Install only the updated `github-note.css` after a pinned-hash preflight and backup; protect Core, Video, X-case CSS and user-owned notes.
 - Preserve README-authored capability/highlight overviews as concise, attributed content; keep on-device/no-cloud/no-telemetry claims together with the README's online exceptions and optional cloud modes.
 - Rename the reading-layer staging folder from `00-Inbox` to `00-待整理`; hide `GitHub-Note/_repo-data` only in Obsidian File Explorer by updating the shared `github-note.css` Extension. Existing assets/links remain intact, with guarded original-file backups in ignored `.runtime`.
 - Safely refresh the ODS V2.2 Vault preview and its checked-in reference text without touching the formal ODS Capture Note.

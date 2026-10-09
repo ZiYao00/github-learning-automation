@@ -91,6 +91,8 @@ def capture_metadata_from_text(text: str) -> dict[str, str]:
         "capture_status",
         "analysis_status",
         "observation_fingerprint",
+        "note_style",
+        "editorial_contract_version",
     )
     return {
         key: value
@@ -209,6 +211,8 @@ def _frontmatter(
         lines.append(f"observation_fingerprint: {_yaml_scalar(observation_fingerprint)}")
     if str(analysis.get("editorial_body") or "").strip():
         lines.append('note_style: "natural-product-v2.2"')
+        if int(job.get("version") or 0) >= 7:
+            lines.append('editorial_contract_version: "2.2"')
     lines.extend(
         [
             "tags:",
@@ -356,6 +360,8 @@ def render_note(
     *,
     preserved_tail: str | None = None,
 ) -> str:
+    if int(job.get("version") or 0) >= 7 and not str(analysis.get("editorial_body") or "").strip():
+        raise ValueError("新 Job v7 必须生成 V2.2 自然产品正文，禁止使用旧模板。")
     if str(analysis.get("editorial_body") or "").strip():
         return _render_editorial_note(job, analysis, preserved_tail=preserved_tail)
     repo = job["repository"]

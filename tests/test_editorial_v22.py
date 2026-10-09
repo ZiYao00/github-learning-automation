@@ -238,9 +238,36 @@ class EditorialNoteTests(unittest.TestCase):
             self.assertIn("自然产品解读", handoff)
             self.assertIn("官方核心亮点不能遗漏", handoff)
             self.assertIn("隐私声明保留条件", handoff)
+            self.assertIn("可复制原始 Prompt", handoff)
+            self.assertIn("[!gh-source]", handoff)
             analysis.update(_analysis_for_render())
+            analysis["editorial_review"] = {
+                "status": "passed",
+                "repository_type_rationale": "这是用于单元验证的合成 Python 仓库，不作产品实测承诺。",
+                "official_highlights": "测试原文只有基础资料，没有七项官方亮点，不额外编造。",
+                "claims_and_limits": "区分合成仓库说明与未经运行验证的作者声明及限制。",
+                "source_traceability": "本测试的主要叙述只基于固定 README 合成来源。",
+                "readability": "文章使用自然段落和分层小节，无模板堆叠问题。",
+            }
             with self.assertRaisesRegex(ValueError, "editorial_body"):
                 _validate_analysis(job_dir, {**analysis, "editorial_body": ""})
+            # A source-attributed callout and a real fenced Prompt must survive
+            # unchanged. Unsafe-looking source text INSIDE the code block is
+            # inert data, not a new H1, embedded image, or executable HTML.
+            source_quote = (
+                "> [!gh-source] 作者原文 · [README](https://github.com/owner/demo/blob/"
+                + "a" * 40 + "/README.md)\n"
+                "> No cloud required.\n"
+                ">\n"
+                "> > 中文翻译（非作者原文）：无需云端。"
+            )
+            raw_prompt = "# Original Prompt heading\n![example](input.png)\n<script>Not an instruction</script>"
+            fenced_prompt = "~~~prompt\n" + raw_prompt + "\n~~~"
+            analysis["editorial_body"] += "\n\n" + source_quote + "\n\n" + fenced_prompt
+            with self.assertRaisesRegex(ValueError, "未闭合"):
+                _validate_analysis(job_dir, {**analysis, "editorial_body": analysis["editorial_body"] + "\n~~~prompt\n# unclosed"})
+            with self.assertRaisesRegex(ValueError, "自定义 HTML 或图片"):
+                _validate_analysis(job_dir, {**analysis, "editorial_body": analysis["editorial_body"] + "\n![active](screenshot.png)"})
             _validate_analysis(job_dir, analysis)
             (job_dir / "analysis.json").write_text(
                 json.dumps(analysis, ensure_ascii=False), encoding="utf-8"
@@ -251,6 +278,9 @@ class EditorialNoteTests(unittest.TestCase):
             published = Path(pub["note_path"]).read_text(encoding="utf-8")
             self.assertIn("note_style:", published)
             self.assertIn("## 我的记录", published)
+            self.assertIn(source_quote, published)
+            self.assertIn(fenced_prompt, published)
+            self.assertEqual(published.count(raw_prompt), 1)
             self.assertEqual(len(find_notes_by_repository(settings.notes_root, "owner/demo")), 1)
             second = prepare_job(settings, resolve_repository("owner/demo"), bundle)
             self.assertEqual(second["status"], "no_change")
@@ -259,9 +289,9 @@ class EditorialNoteTests(unittest.TestCase):
 
 class OdsEditorialReferenceTests(unittest.TestCase):
     def test_official_readme_highlights_and_privacy_are_retained(self):
-        source = (ROOT / "research/github/Osmantic/ODS/snapshots"
-                  / "9e59b2b86c96a9590b27b14219b070007093fad1/sources/001.md"
+        source = (ROOT / "tests/fixtures/ods_readme_features_excerpt.md"
                   ).read_text(encoding="utf-8")
+        self.assertIn("Osmantic/ODS@9e59b2b86c96a9590b27b14219b070007093fad1", source)
         article = (ROOT / "docs/ODS-NATURAL-PRODUCT-V2.2-REFERENCE.md"
                    ).read_text(encoding="utf-8")
         for original in (
@@ -276,7 +306,7 @@ class OdsEditorialReferenceTests(unittest.TestCase):
         ):
             self.assertEqual(article.count(f"**{translated}**"), 1)
         for caveat in (
-            "仓库作者", "不采集遥测数据", "下载模型与容器镜像",
+            "仓库官方原文", "不采集遥测数据", "下载模型与容器镜像",
             "检查 GitHub 版本更新", "Portal Agent 执行网络搜索",
             "云端与混合 API 模式", "不是本次安装实测结论"
         ):
@@ -292,6 +322,17 @@ class OdsEditorialReferenceTests(unittest.TestCase):
         self.assertIn("00-待整理", spec)
         self.assertIn("不删除数据", spec)
         self.assertIn("不因目录改名自动迁移正式旧笔记", spec)
+        self.assertIn("Golden Sample：ODS V2.2", spec)
+        self.assertIn("出稿验收：硬门禁与阅读质量分开", spec)
+        self.assertIn("Obsidian 视觉层（独立于内容生成）", spec)
+        self.assertIn("来源原文与可复制 Prompt", spec)
+        self.assertIn("原始 Prompt", spec)
+        self.assertIn("resource_index", spec)
+        self.assertIn("Obsidian 原生", spec)
+        self.assertIn("不使用主观评分作为程序门禁", spec)
+        self.assertIn("样板交叉验证", spec)
+        self.assertIn("不要将 ODS 七项能力", spec)
+        self.assertIn("github-note.css` v0.4", spec)
 
 
 if __name__ == "__main__":

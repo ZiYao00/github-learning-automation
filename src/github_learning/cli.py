@@ -10,7 +10,10 @@ from .auth import probe_rate_limit, resolve_github_auth
 from .config import ConfigurationError, configure_defaults, configure_notes, load_settings
 from .github_client import GitHubFetchError, fetch_repository_sources
 from .input_resolver import resolve_repository
-from .lifecycle import finalize_job, preflight_publish, prepare_job, resume_prepare
+from .lifecycle import (
+    EDITORIAL_CONTRACT_VERSION, CURRENT_JOB_VERSION,
+    finalize_job, preflight_publish, prepare_job, resume_prepare,
+)
 from .research_packet import ResearchPacketError
 
 
@@ -161,6 +164,8 @@ def _doctor_payload(settings, *, check_api: bool = False) -> dict[str, Any]:
             }
         )
     payload["issues"] = issues
+    payload["editorial_contract_version"] = EDITORIAL_CONTRACT_VERSION
+    payload["new_job_version"] = CURRENT_JOB_VERSION
     if check_api:
         payload["github_api"] = probe_rate_limit(resolve_github_auth())
     return payload

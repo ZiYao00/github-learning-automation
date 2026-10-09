@@ -33,6 +33,17 @@ def _analysis() -> dict:
     return {
         "source_status": "sufficient",
         "source_notes": "来源充分。",
+        "editorial_contract_version": "2.2",
+        "editorial_headline": "合成仓库：完成可复用的笔记",
+        "editorial_body": "本仓库仅用于源码归档和正式笔记幂等性回归，不代表真实环境或安装成功。" * 16,
+        "editorial_review": {
+            "status": "passed",
+            "repository_type_rationale": "本次属于用于自动回归的合成仓库类型，不推断产品级功能。",
+            "official_highlights": "没有真正的功能概览材料，因此只记录合成测试用途。",
+            "claims_and_limits": "此处的描述仅用于虚拟仓库测试，不做真实项目的效果承诺。",
+            "source_traceability": "合成测试中的唯一来源是 README，分析没有其它外部依据。",
+            "readability": "自然正文与独立章节规则清晰，不使用旧格式回退。",
+        },
         "content_profile": "software",
         "why_save": "用于验证仓库收藏和生命周期。",
         "summary": "一个演示项目。",
@@ -273,4 +284,4 @@ def test_finalize_is_idempotent_after_publish(tmp_path: Path):
     assert second["status"] == "note_ready"
     assert second["idempotent"] is True
     assert second["note_path"] == first["note_path"]
-    assert len(list(settings.notes_root.glob("*.md"))) == 1
+    assert len(list(settings.notes_root.rglob("*.md"))) == 1

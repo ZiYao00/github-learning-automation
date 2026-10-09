@@ -31,15 +31,18 @@
 
 至少验证：
 
-- Job v6：collected → packet_archived → analysis_required → analysis_complete → published。
+- 新 Job v7（契约 2.2）：collected → packet_archived → analysis_required → analysis_complete → published；旧 v6 Job 可原状态恢复。
 - v0.4+ in_progress 恢复不重复 GitHub collection。
 - v0.3/v5 活动 Job 返回 `legacy_job_restart_required`。
 - `--restart-job` 保留旧 Job 并标记 superseded。
 - Evidence Map 强制覆盖所有 `coverage_required=true` source。
-- 新 sufficient Job 的自然产品解读 `editorial_headline` / `editorial_body` 必填，渲染成一篇连贯文章；旧 Job 兼容原结构，Minimal Note 不变。
+- 新 v7 sufficient Job 的自然产品解读 `editorial_headline` / `editorial_body` 必填，且五项 `editorial_review` 通过；旧 Skill 提交缺字段/旧格式必须被阻断，不能退回旧模板。旧 v6 Job 兼容原结构，Minimal Note 不变。
 - Full Capture Note 保留结构数据（why_save、adaptive map、resource index、packet_id），即使它们不再被机械拼接成章节。
 - README 只选首张非徽章正文图片，固定 revision Git blob/size 验证后保存一张，放到阅读层 `_repo-data`；首图失败不下载第二张，不影响文章；无图仓库不配图。
+- 以已通过的 `docs/ODS-NATURAL-PRODUCT-V2.2-REFERENCE.md` 为 Golden Sample，复用问题导向与事实核查的写法而非 ODS 固定结构；`docs/NOTE-SPEC.md` 的硬性门禁全部通过后才批准 sufficient。
 - 仓库 README 有官方功能亮点总览时，正文必须保留有价值的主类别，并以典型场景深化，不按固定七项模板填空；对隐私/无云/遥测等说明保持作者归属和官方联网例外。
+- CSS v0.4 在原编辑式阅读基础上按需支持 `gh-source` 官方逐字原文引用和 `prompt` 原始 Prompt 代码框，必须验证来源核对、翻译标注、原生复制按钮、320px 滚动、长文本换行、深浅色和窄视口；只有普通源码/安装命令时不得伪装为 Prompt。
+- CSS 采用 GitHub Note 专属编辑式阅读增强：检查 ODS / 非 ODS 旧笔记、深浅主题、窄窗口、原生源码/Live Preview、首图、文件树隐藏；关闭 CSS 后 Markdown 仍完整可读。共享仓库的 `scripts/qa_github_note_reading.py` 为十场景静态 QA，不能取代真实 Obsidian 客户端验收。
 - Obsidian `GitHub-Note/_repo-data` 仅通过共享 `github-note.css` 在文件树隐藏，保留本地文件和引用；待整理目录名为 `00-待整理`，不搬迁旧正式笔记。
 - `source_status=insufficient` 发布 Minimal Capture Note。
 - same Packet + same observation → no_change。
@@ -57,6 +60,7 @@
 - `octocat/Hello-World`：极简仓库，可验证 Minimal Capture Note。
 
 真实 smoke 因网络失败时应区分 timeout 与实现回归；保留本地 synthetic 验证结果，不把网络错误当代码失败。
+- 新联动验收：`liyue-aigc/seedance-2-5-video-director` 固定 revision `ad0e68ba6ce24fb9ae9c67c9276061cef37663f1`，10 来源、Job v7 / 契约 2.2、发布于 `00-待整理`、`first_image_status=no_image`、复次 prepare 返回 `no_change`；可用本机集成脚本 `py -3.12 scripts/verify_seedance_v22_smoke.py` 复核原始 Prompt 保真与文献归属。不能把这一次成功等同于所有 Agent 语义质量自动保证。
 
 ## Agent 与文档
 
@@ -77,6 +81,7 @@ py -3.12 scripts/build_agent_skill_packages.py --check
 - `docs/QUICKSTART.md`
 - `docs/V0.5-BACKLOG.md`
 - `skill/github-note/SKILL.md`
+- 派生 `references/NOTE-SPEC.md`、`ODS-V2.2-GOLDEN.md`、`contract.json` 与 `release/skill.zip` 哈希一致；网页旧 Skill 必须重新安装，不得假设自动覆盖。
 
 ## 自动验证
 

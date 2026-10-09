@@ -37,7 +37,14 @@ ODS 在 [README 产品介绍](https://github.com/Osmantic/ODS/blob/9e59b2b86c96a
 - **图像生成**：使用本地图像生成工具，不必为了生成图片而将提示词发送到托管推理 API。
 - **隐私与运维**：集中处理服务认证、密钥、可观测性和诊断功能。
 
-**它对隐私的描述也值得单独记住。** 仓库作者表示，ODS 无须依赖云端服务或付费订阅即可运行；模型推理、聊天记录和个人文件保留在本机，并声称 ODS 不采集遥测数据。**但“本地运行”不等于默认完全离线**：按 README 的说明，下载模型与容器镜像、检查 GitHub 版本更新，以及 Portal Agent 执行网络搜索时会联网；[官方 FAQ](https://github.com/Osmantic/ODS/blob/9e59b2b86c96a9590b27b14219b070007093fad1/ods/FAQ.md#is-my-data-private) 进一步解释如何关闭相关联网行为。云端与混合 API 模式则属于可选配置。
+**它对隐私的描述也值得单独记住。**
+
+> [!gh-source] 仓库官方原文 · [固定版本 README](https://github.com/Osmantic/ODS/blob/9e59b2b86c96a9590b27b14219b070007093fad1/README.md)
+> No cloud required. No subscriptions required.
+>
+> > 中文翻译（译文，非作者原文）：无需云端，也无需订阅。
+
+同一份 README 还表示，模型推理、聊天记录与个人文件保留在本机，并声称 ODS 不采集遥测数据。**但“本地运行”不等于默认完全离线**：按 README 的说明，下载模型与容器镜像、检查 GitHub 版本更新，以及 Portal Agent 执行网络搜索时会联网；[官方 FAQ](https://github.com/Osmantic/ODS/blob/9e59b2b86c96a9590b27b14219b070007093fad1/ods/FAQ.md#is-my-data-private) 进一步解释如何关闭相关联网行为。云端与混合 API 模式则属于可选配置。
 
 上述内容是**项目方在本次快照中的能力与隐私声明**，不是本次安装实测结论；不同组件是否可用、实际数据流向及隐私表现，仍需要针对具体配置验证。
 
@@ -96,4 +103,4 @@ ODS 关注的是更外层的事情：根据硬件选择模型、组织服务、�
 - [第一张图片的原始仓库文件](https://github.com/Osmantic/ODS/blob/9e59b2b86c96a9590b27b14219b070007093fad1/ods/docs/images/osmantic-lockup.png)
 - [安装信任说明](https://github.com/Osmantic/ODS/blob/9e59b2b86c96a9590b27b14219b070007093fad1/ods/docs/INSTALLER_TRUST.md) · [组件授权](https://github.com/Osmantic/ODS/blob/9e59b2b86c96a9590b27b14219b070007093fad1/ods/LICENSING.md)
 
-<small>资料快照：Osmantic/ODS@9e59b2b86c96a9590b27b14219b070007093fad1。本页为单篇阅读规范样板（图像引用依赖对应 Vault 媒体目录）；内容以仓库资料为依据，未在本机安装或实测 ODS。</small>
+<small>资料快照：Osmantic/ODS@9e59b2b86c96a9590b27b14219b070007093fad1。本页是已批准的 V2.2 视觉增强黄金样板；内容以仓库资料为依据，未在本机安装或实测 ODS。</small>

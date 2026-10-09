@@ -52,6 +52,17 @@ def _complete_analysis(job_dir: Path) -> None:
         {
             "source_status": "sufficient",
             "why_save": "一个用于验证 v0.4 生命周期的仓库。",
+            "editorial_contract_version": "2.2",
+            "editorial_headline": "合成生命周期：数据与可读笔记",
+            "editorial_body": "本测试依据合成 README 检查版本化笔记发布。" * 18,
+            "editorial_review": {
+                "status": "passed",
+                "repository_type_rationale": "合成测试的类型仅用于校验工作流，新版资料不会外推。",
+                "official_highlights": "资料只有演示内容，不声明真实的官方亮点清单。",
+                "claims_and_limits": "这是合成证据，不等于实际安装或模型测试。",
+                "source_traceability": "所有表述均限于测试数据中的 README 说明。",
+                "readability": "单篇文章优先保留自然阅读和清晰内容边界。",
+            },
             "summary": "演示仓库。",
             "what_it_is": "用于测试 Capture Note。",
             "capabilities": ["能力 A"],
@@ -76,7 +87,8 @@ def test_prepare_archives_packet_before_analysis(tmp_path: Path):
     assert result["packet_status"] == "packet_archived"
     assert result["packet_id"] == "owner/demo@abc123"
     assert Path(result["packet_path"]).is_dir()
-    assert job["version"] == 6
+    assert job["version"] == 7
+    assert job["editorial_contract_version"] == "2.2"
     assert job["state"] == "analysis_required"
 
 
