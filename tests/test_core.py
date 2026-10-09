@@ -407,31 +407,31 @@ def test_collection_pins_repository_files_to_one_revision(monkeypatch):
         if url.endswith("/repos/owner/demo/commits/main"):
             return {"sha": "abc123", "commit": {"tree": {"sha": "tree123"}}}
         if "/repos/owner/demo/readme?" in url and "ref=abc123" in url:
-            return {"path": "README.md", "sha": "readme123", "encoding": "base64", "content": "IyBEZW1v"}
+            return {"path": "README.md", "sha": client._git_blob_sha(b"# Demo"), "encoding": "base64", "content": "IyBEZW1v"}
         if "/repos/owner/demo/contents?" in url and "ref=abc123" in url:
             return [{"name": "pyproject.toml", "path": "pyproject.toml", "type": "file", "sha": "manifest123"}]
         if url.endswith("/repos/owner/demo/git/trees/tree123?recursive=1"):
             return {
                 "tree": [
-                    {"path": "README.md", "type": "blob", "sha": "readme123", "size": 6},
-                    {"path": "pyproject.toml", "type": "blob", "sha": "manifest123", "size": 30},
-                    {"path": "SKILL.md", "type": "blob", "sha": "skill123", "size": 100},
+                    {"path": "README.md", "type": "blob", "sha": client._git_blob_sha(b"# Demo"), "size": 6},
+                    {"path": "pyproject.toml", "type": "blob", "sha": client._git_blob_sha(b"[project]\nname='demo'\n"), "size": len(b"[project]\nname='demo'\n")},
+                    {"path": "SKILL.md", "type": "blob", "sha": client._git_blob_sha(b"# Skill\n"), "size": len(b"# Skill\n")},
                 ]
             }
         if url.endswith("/repos/owner/demo/releases/latest"):
             raise client.GitHubFetchError("rate_limited_or_forbidden", "release limited", 403)
         raise AssertionError(url)
 
-    def fake_text(url, auth):
+    def fake_bytes(url, auth):
         raw_calls.append(url)
         if url.endswith("/pyproject.toml"):
-            return "[project]\nname='demo'\n"
+            return b"[project]\nname='demo'\n"
         if url.endswith("/SKILL.md"):
-            return "# Skill\n"
+            return b"# Skill\n"
         raise AssertionError(url)
 
     monkeypatch.setattr(client, "_request_json", fake_json)
-    monkeypatch.setattr(client, "_request_text", fake_text)
+    monkeypatch.setattr(client, "_request_raw_bytes", fake_bytes)
     bundle = client.fetch_repository_sources("owner/demo", GitHubAuth("token", "environment", True))
 
     assert bundle.revision == "abc123"

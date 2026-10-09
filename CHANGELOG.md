@@ -2,6 +2,20 @@
 
 ## Unreleased · Natural Product V2.2 pilot
 
+- Correct CLI exit codes: blocked and error statuses now exit nonzero rather than reporting false shell success; add network-free regression coverage.
+- Fix generated v8 Agent handoff text to reference current Job version and evidence_set_id, with compatibility regression checks.
+- Verify a real pinned `psf/requests` repository end-to-end with isolated Job v8 storage, leaving the actual Obsidian Vault and target repository code untouched.
+
+- Strengthen file publication with OS repo locks, target SHA comparison, exclusive new-note creation, a persisted transaction record and crash recovery.
+- Introduce runtime Job v8 and evidence-set fingerprints while retaining editorial V2.2 and historical v6/v7 compatibility. Added supplemental evidence now requests explicit reanalysis instead of silently rewriting notes.
+- Verify pinned Git Blob SHA and byte size before text decoding; add optional seal to new V1 Packet manifests while leaving old immutable snapshots unchanged.
+- Validate source-linked verbatim Prompt and gh-source blocks; reject embedded media/unsafe HTML in editorial bodies.
+- Add limited-source coverage warnings, negative tests for publication/Prompt/integrity, and updated Skill v2.3.0 bundles.
+
+- Fix generic Source Planner coverage for root prompt documents and translated READMEs; fail closed on malformed supplemental evidence.
+- Reuse previously archived pinned source selections after Source Planner upgrades so an unchanged repository returns `no_change`; never overwrite immutable snapshots.
+- Introduce append-only, revision-pinned Markdown supplements for missed author sources, Git Blob SHA/size verification, and the real CodexPro V2.2 smoke-test audit.
+
 - Ship an ODS V2.2 editorial preview and the first meaningful image from its pinned README into the configured Obsidian Vault without touching the formal ODS Capture Note.
 - Introduce default `editorial_headline` + `editorial_body` for new, sufficient Capture Notes; retain legacy structured rendering and Minimal Note compatibility.
 - Materialize at most one same-repository README image per note, pinned and Git-blob-verified, stored separately in the reading media layer. No video downloads or media mirroring.

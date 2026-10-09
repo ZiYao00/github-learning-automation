@@ -87,7 +87,7 @@ def test_prepare_archives_packet_before_analysis(tmp_path: Path):
     assert result["packet_status"] == "packet_archived"
     assert result["packet_id"] == "owner/demo@abc123"
     assert Path(result["packet_path"]).is_dir()
-    assert job["version"] == 7
+    assert job["version"] == 8
     assert job["editorial_contract_version"] == "2.2"
     assert job["state"] == "analysis_required"
 

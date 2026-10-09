@@ -17,7 +17,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
-from github_learning.lifecycle import EDITORIAL_CONTRACT_VERSION, CURRENT_JOB_VERSION
+from github_learning.lifecycle import EDITORIAL_CONTRACT_VERSION, CURRENT_JOB_VERSION, WORKFLOW_SKILL_VERSION
 
 SOURCE = PROJECT_ROOT / "skill" / "github-note"
 OUTPUTS = [
@@ -32,7 +32,7 @@ REFERENCE_INPUTS = {
     "ODS-V2.2-GOLDEN.md": PROJECT_ROOT / "docs" / "ODS-NATURAL-PRODUCT-V2.2-REFERENCE.md",
 }
 ZIP_PATH = PROJECT_ROOT / "release" / "skill.zip"
-SKILL_VERSION = "2.2.0"
+SKILL_VERSION = WORKFLOW_SKILL_VERSION
 CSS_VERSION = "0.4"
 
 

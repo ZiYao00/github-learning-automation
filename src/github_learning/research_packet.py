@@ -177,6 +177,12 @@ def validate_packet(packet_dir: Path) -> dict[str, Any]:
     for entry in packet.get("resources") or []:
         _validate_entry_file(packet_dir, entry)
 
+    seal = packet.get("archive_seal_sha256")
+    if seal is not None:
+        canonical = {key: value for key, value in packet.items() if key != "archive_seal_sha256"}
+        if not isinstance(seal, str) or seal != _sha256_bytes(_json_bytes(canonical)):
+            raise ResearchPacketError("packet_seal_mismatch", "归档清单的结构指纹不匹配。")
+
     content_fingerprint = str(packet.get("content_fingerprint") or "")
     if not content_fingerprint:
         raise ResearchPacketError("packet_manifest_invalid", "Packet 缺少 content_fingerprint。")
@@ -323,6 +329,9 @@ def archive_runtime_packet(research_root: Path, job_dir: Path) -> dict[str, Any]
         "sources": packet_sources,
         "resources": packet_resources,
     }
+    # New V1 archives carry a verifiable seal of the Packet manifest itself.
+    # Pre-existing V1 snapshots without this optional field remain readable.
+    packet["archive_seal_sha256"] = _sha256_bytes(_json_bytes(packet))
     _write_bytes_checked(
         staging / "packet.json",
         json.dumps(packet, ensure_ascii=False, indent=2).encode("utf-8") + b"\n",

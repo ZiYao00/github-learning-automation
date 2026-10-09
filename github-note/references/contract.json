@@ -1,10 +1,10 @@
 {
   "css_extension_version": "0.4",
   "editorial_contract_version": "2.2",
-  "new_job_version": 7,
+  "new_job_version": 8,
   "references": {
-    "NOTE-SPEC.md": "03616f1ff43b347712dbb59e93b94e6e2429f6b0aaa4bb866a5db9a5ce3f5599",
+    "NOTE-SPEC.md": "29cb7100836e73b04b4f2cd81d71a39e539623914dad9db033fce540c532b292",
     "ODS-V2.2-GOLDEN.md": "b9bbe80f517f1931049c9a7f9420ca00dceed66d1c9c8225ba490957bb674b2d"
   },
-  "skill_version": "2.2.0"
+  "skill_version": "2.3.0"
 }

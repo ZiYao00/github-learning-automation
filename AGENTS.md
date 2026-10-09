@@ -71,7 +71,7 @@ Vault child → Junction → notes_root
 3. `prepare` 必须先完成 Research Packet staging、SHA-256/schema 校验和 immutable archive，再进入 Agent 分析。
 4. 若返回 `in_progress`，直接恢复 v0.4+ runtime，不重新访问 GitHub。v0.3/v5 或更早活动 Job 返回 `legacy_job_restart_required`；只有明确放弃旧 attempt 时才用 `--restart-job`。
 5. 只有用户明确要第二篇独立笔记时才使用 `--new-note`。
-6. 读取 `agent_handoff.md`、`source_manifest.json`、manifest 指向的 `sources/`、`observation.json`、`source_bundle.md` 与 `analysis.json`。默认不要全文读取 `resources/`。
+6. 读取 `agent_handoff.md`、`source_manifest.json`、manifest 指向的 `sources/`、`observation.json`、`source_bundle.md` 与 `analysis.json`。默认不要全文读取 `resources/`。如果固定提交的 Prompt/本地化 README 被旧 Source Planner 漏选，须单独验证并使用 `scripts/collect_pinned_supplement.py` 按 Git Blob SHA 存入不可覆盖的 Research 补证目录，分析时记录 `supplemental_evidence` 的逻辑 ID 和文件路径。不能改写原 Research Packet 或伪造其来源清单。
 7. 填写 `why_save`、`content_profile`、紧凑的 knowledge/project map、必要的 resource index，以及来源明确支持的 requirements / compatibility / deployment / architecture / project_status。
 8. `source_manifest.json` 中每个 `coverage_required=true` source 必须在 `analysis.evidence_map` 里标记为 `represented`，或 `omitted_with_reason`。仅“已阅读”不算覆盖。
 9. 来源不足时把 `source_status` 设为 `insufficient`。这会生成 Minimal Capture Note，而不是把收藏判为失败。
@@ -91,7 +91,7 @@ Vault child → Junction → notes_root
 
 ## Capture Note
 
-**新 Job v7 强制 V2.2 写作契约**（`editorial_contract_version=2.2`）：完整笔记缺少 `editorial_body`、标题或五项 `editorial_review` 时程序必须拒绝发布，不允许旧模板回退；旧 v6 Job 可按原状态恢复。新笔记默认进入 `notes_root/00-待整理`，已存在的按原位刷新，`no_change` 和用户尾部继续受保护。Capture Note V2.2 对**新生成且来源充分**的 Job 默认使用自然产品解读：Agent 写入 `editorial_headline` / `editorial_body`，面向读者解释项目的独特能力、价值、适合场景和重要限制。若 README 明确列出作者的高价值 Features/Highlights/核心模块，必须在正文前部忠实保留简短的官方能力概览，并标注来源归属；隐私、本地运行、无云端或无遥测自述要一并保留官方披露的联网例外、云端/API 可选条件。该概览不等于已实测，不强制所有仓库使用 ODS 的七项分类。旧 Job 无上述字段时沿用原结构，Minimal Note 保持不变。已确认的 Golden Sample 是 `docs/ODS-NATURAL-PRODUCT-V2.2-REFERENCE.md`；复用其证据充分、问题导向、自然阅读的**写法**，不能把 ODS 的技术内容或固定标题套给其它仓库。硬性来源门禁与人工可读性审查以 `docs/NOTE-SPEC.md` 为准。
+**新 Job v8 强制 V2.2 写作契约**（`editorial_contract_version=2.2`）：完整笔记缺少 `editorial_body`、标题或五项 `editorial_review` 时程序必须拒绝发布，不允许旧模板回退；历史 v6/v7 Job 按原契约兼容恢复。新笔记默认进入 `notes_root/00-待整理`，已存在的按原位刷新，`no_change` 和用户尾部继续受保护。Capture Note V2.2 对**新生成且来源充分**的 Job 默认使用自然产品解读：Agent 写入 `editorial_headline` / `editorial_body`，面向读者解释项目的独特能力、价值、适合场景和重要限制。若 README 明确列出作者的高价值 Features/Highlights/核心模块，必须在正文前部忠实保留简短的官方能力概览，并标注来源归属；隐私、本地运行、无云端或无遥测自述要一并保留官方披露的联网例外、云端/API 可选条件。该概览不等于已实测，不强制所有仓库使用 ODS 的七项分类。旧 Job 无上述字段时沿用原结构，Minimal Note 保持不变。已确认的 Golden Sample 是 `docs/ODS-NATURAL-PRODUCT-V2.2-REFERENCE.md`；复用其证据充分、问题导向、自然阅读的**写法**，不能把 ODS 的技术内容或固定标题套给其它仓库。硬性来源门禁与人工可读性审查以 `docs/NOTE-SPEC.md` 为准。
 
 每个仓库默认最多使用 README 第一张非徽章正文图片（仓库内受支持图片、固定 revision、5 MiB 上限、Git blob 验证）；图片在 `notes_root/_repo-data/owner/repo/media/` 独立存储，笔记通过 WikiLink 引用。没有合适图片不强行配图，视频与全量媒体下载仍延期。
 
@@ -101,9 +101,9 @@ Obsidian 中的待整理文件夹命名为 `00-待整理`（旧 `00-Inbox` 不�
 
 managed end marker 之后属于用户，默认从 `## 我的记录` 开始，refresh 不得删除或重写。
 
-相同 `packet_id` + 相同 `observation_fingerprint` 的已发布笔记返回 `no_change`，不重新调用 Agent，也不重写 managed region。
+相同 `packet_id` + 相同 `observation_fingerprint` 且有效证据集未发生变化的已发布笔记返回 `no_change`；出现新增已核验补证则返回 `update_available`，需要用户明确批准 `--refresh-evidence`，不自动重写 managed region。
 
-**Skill 安装版本安全：** 旧网页版 Skill 不会自动更新，`release/skill.zip` 才是新安装包。所有新的 Agent 应先核对 `doctor` 返回的契约版本（2.2、新 Job v7）与随包 `references/contract.json`，缺少资料或版本不一致则停止。
+**Skill 安装版本安全：** 旧网页版 Skill 不会自动更新，`release/skill.zip` 才是新安装包。所有新的 Agent 应先核对 `doctor` 返回的契约版本（2.2、新 Job v8，Skill 2.3.0）与随包 `references/contract.json`，缺少资料或版本不一致则停止。
 
 ## Refresh 安全边界
 

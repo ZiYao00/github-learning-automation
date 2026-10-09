@@ -24,7 +24,7 @@ class SkillDistributionTests(unittest.TestCase):
         self.assertEqual(len(package),5)
         policy=json.loads(package["references/contract.json"].decode("utf-8"))
         self.assertEqual(policy["editorial_contract_version"],EDITORIAL_CONTRACT_VERSION)
-        self.assertEqual(CURRENT_JOB_VERSION,7)
+        self.assertEqual(CURRENT_JOB_VERSION,8)
         self.assertEqual(policy["new_job_version"],CURRENT_JOB_VERSION)
         self.assertEqual(policy["css_extension_version"],"0.4")
         for name,source in build.REFERENCE_INPUTS.items():

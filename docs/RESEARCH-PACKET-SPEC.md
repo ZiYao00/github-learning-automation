@@ -34,6 +34,12 @@ owner/repo@revision
 
 staging 使用 <research_root>/.staging/<job-id>/。失败 staging 不自动删除。
 
+## Source authenticity and compatibility
+
+主来源新采集需先核对固定 Git Tree 的 Blob SHA-1 与原始字节大小，再解码 UTF-8 和截断；失败不可写入 Packet。原始字节哈希不等于保存后的分析文本 SHA-256。每个新 Packet V1 的 `packet.json` 新增可验证的 `archive_seal_sha256`（清单除自身字段以外的稳定哈希）；此前没有 seal 的 V1 Snapshot 保持只读兼容。
+
+Source Planner 改变时，已存在的 `owner/repo@revision` 必须按原 Packet 的 source/resource 清单选取材料，不能覆盖历史归档。追加的作者原始 Prompt 等文档只使用单独 Git Blob 校验的 append-only supplement，并形成 `evidence_set_id`；新证据不得被写入原 Packet。
+
 ## Immutability
 
 一个正式 Snapshot 一旦存在：

@@ -11,10 +11,11 @@ from .config import ConfigurationError, configure_defaults, configure_notes, loa
 from .github_client import GitHubFetchError, fetch_repository_sources
 from .input_resolver import resolve_repository
 from .lifecycle import (
-    EDITORIAL_CONTRACT_VERSION, CURRENT_JOB_VERSION,
+    EDITORIAL_CONTRACT_VERSION, CURRENT_JOB_VERSION, WORKFLOW_SKILL_VERSION,
     finalize_job, preflight_publish, prepare_job, resume_prepare,
 )
-from .research_packet import ResearchPacketError
+from .research_packet import ResearchPacketError, packet_path, validate_packet
+from .publish_safety import PublishSafetyError
 
 
 def _project_root() -> Path:
@@ -166,6 +167,7 @@ def _doctor_payload(settings, *, check_api: bool = False) -> dict[str, Any]:
     payload["issues"] = issues
     payload["editorial_contract_version"] = EDITORIAL_CONTRACT_VERSION
     payload["new_job_version"] = CURRENT_JOB_VERSION
+    payload["workflow_skill_version"] = WORKFLOW_SKILL_VERSION
     if check_api:
         payload["github_api"] = probe_rate_limit(resolve_github_auth())
     return payload
@@ -182,6 +184,24 @@ def _onboarding_required(settings) -> dict[str, Any]:
         "actions": payload["actions"],
         "warnings": payload["warnings"],
     }
+
+
+_COMPLETED_STATUSES = {
+    "prepare": {
+        "analysis_required", "analysis_complete", "no_change", "update_available",
+        "note_ready", "publish_retry_ready",
+    },
+    "finalize": {"note_ready", "no_change", "analysis_required", "publish_retry_ready"},
+}
+
+
+def _workflow_exit_code(command: str, payload: dict[str, Any]) -> int:
+    """Return 0 only for a successfully handled workflow state.
+
+    Actionable update_available / pending analysis are intentional non-errors.
+    Blocked, invalid, failed and unknown statuses are never reported as success.
+    """
+    return 0 if payload.get("status") in _COMPLETED_STATUSES.get(command, set()) else 2
 
 
 def main() -> int:
@@ -201,6 +221,8 @@ def main() -> int:
         action="store_true",
         help="为同一仓库显式创建另一篇笔记；默认按 repo identity 创建或刷新现有笔记。",
     )
+    p_prepare.add_argument("--refresh-evidence", action="store_true",
+                           help="明确批准在同一 GitHub 提交下，按新增的已验证补证重新分析现有笔记。")
     p_prepare.add_argument(
         "--replace-legacy",
         action="store_true",
@@ -287,7 +309,7 @@ def main() -> int:
         if args.command == "prepare":
             if _needs_onboarding(settings):
                 _print(_onboarding_required(settings))
-                return 0
+                return 2
 
             auth = resolve_github_auth()
             if not auth.authenticated and not args.allow_anonymous:
@@ -302,7 +324,7 @@ def main() -> int:
                         ],
                     }
                 )
-                return 0
+                return 2
 
             resolved = resolve_repository(args.repository)
             publish_mode = "new" if args.new_note else "upsert"
@@ -314,46 +336,52 @@ def main() -> int:
                 restart_job=args.restart_job,
             )
             if preflight["status"] == "in_progress":
-                _print(resume_prepare(settings, Path(str(preflight["job_dir"]))))
-                return 0
+                result = resume_prepare(settings, Path(str(preflight["job_dir"])))
+                _print(result)
+                return _workflow_exit_code("prepare", result)
             if preflight["status"] != "ready":
                 _print(preflight)
-                return 0
+                return 2
 
-            bundle = fetch_repository_sources(resolved.full_name, auth)
-            _print(
-                prepare_job(
-                    settings,
-                    resolved,
-                    bundle,
-                    publish_mode=publish_mode,
-                    replace_legacy=args.replace_legacy,
-                    restart_job=args.restart_job,
-                )
+            def pinned_packet_loader(revision: str) -> dict[str, Any] | None:
+                if settings.research_root is None:
+                    return None
+                target = packet_path(settings.research_root, resolved.full_name, revision)
+                return validate_packet(target) if target.is_dir() else None
+
+            bundle = fetch_repository_sources(
+                resolved.full_name, auth, pinned_packet_loader=pinned_packet_loader,
             )
-            return 0
+            result = prepare_job(
+                settings, resolved, bundle,
+                publish_mode=publish_mode,
+                replace_legacy=args.replace_legacy,
+                restart_job=args.restart_job,
+                refresh_evidence=args.refresh_evidence,
+            )
+            _print(result)
+            return _workflow_exit_code("prepare", result)
 
         if args.command == "finalize":
             if _needs_onboarding(settings):
                 _print(_onboarding_required(settings))
-                return 0
-            _print(finalize_job(settings, Path(args.job_dir), replace_legacy=args.replace_legacy))
-            return 0
+                return 2
+            result = finalize_job(settings, Path(args.job_dir), replace_legacy=args.replace_legacy)
+            _print(result)
+            return _workflow_exit_code("finalize", result)
 
     except GitHubFetchError as exc:
         _print({"status": exc.code, "error": str(exc), "http_status": exc.status})
-        return 0 if exc.code in {
-            "auth_required",
-            "auth_invalid",
-            "rate_limited_or_forbidden",
-            "private_repository_blocked",
-        } else 2
+        return 2
     except ResearchPacketError as exc:
         _print({"status": exc.code, "error": str(exc)})
-        return 0
+        return 2
+    except PublishSafetyError as exc:
+        _print({"status": exc.code, "error": str(exc)})
+        return 2
     except ConfigurationError as exc:
         _print({"status": exc.code, "error": str(exc)})
-        return 0
+        return 2
     except Exception as exc:
         _print({"status": "error", "error": str(exc)})
         return 2

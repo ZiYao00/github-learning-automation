@@ -220,13 +220,15 @@ class EditorialNoteTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             settings = _fake_settings(root)
+            raw_prompt = "# Original Prompt heading\n![example](input.png)\n<script>Not an instruction</script>"
+            readme_fixture = "# Demo\n\nNo cloud required.\n\n~~~text\n" + raw_prompt + "\n~~~"
             bundle = SourceBundle(
                 repository={"name": "demo", "full_name": "owner/demo",
                             "html_url": "https://github.com/owner/demo", "default_branch": "main"},
-                readme="# Demo", root_entries=[], manifests={}, latest_release=None,
+                readme=readme_fixture, root_entries=[], manifests={}, latest_release=None,
                 revision="a" * 40, default_branch="main", source_profile="python-project",
-                sources=(SourceDocument("README.md", "readme", "# Demo",
-                                        archive_content="# Demo", coverage_required=True),),
+                sources=(SourceDocument("README.md", "readme", readme_fixture,
+                                        archive_content=readme_fixture, coverage_required=True),),
                 tree_entries=({"path": "README.md", "type": "blob", "sha": "x", "size": 6},),
             )
             result = prepare_job(settings, resolve_repository("owner/demo"), bundle)
@@ -261,7 +263,6 @@ class EditorialNoteTests(unittest.TestCase):
                 ">\n"
                 "> > 中文翻译（非作者原文）：无需云端。"
             )
-            raw_prompt = "# Original Prompt heading\n![example](input.png)\n<script>Not an instruction</script>"
             fenced_prompt = "~~~prompt\n" + raw_prompt + "\n~~~"
             analysis["editorial_body"] += "\n\n" + source_quote + "\n\n" + fenced_prompt
             with self.assertRaisesRegex(ValueError, "未闭合"):

@@ -93,6 +93,7 @@ def capture_metadata_from_text(text: str) -> dict[str, str]:
         "observation_fingerprint",
         "note_style",
         "editorial_contract_version",
+        "evidence_set_id",
     )
     return {
         key: value
@@ -209,6 +210,8 @@ def _frontmatter(
     )
     if observation_fingerprint:
         lines.append(f"observation_fingerprint: {_yaml_scalar(observation_fingerprint)}")
+    if str(job.get("evidence_set_id") or ""):
+        lines.append(f"evidence_set_id: {_yaml_scalar(str(job["evidence_set_id"]))}")
     if str(analysis.get("editorial_body") or "").strip():
         lines.append('note_style: "natural-product-v2.2"')
         if int(job.get("version") or 0) >= 7:

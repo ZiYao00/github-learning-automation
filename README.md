@@ -16,7 +16,7 @@ v0.4.1 的主题仍是 **Durable Knowledge Capture**，这次重点把首次配�
 GitHub URL
   → 首次运行门禁：笔记路径 + Research Root + GitHub 认证
   → prepare：固定 HEAD revision + Source Planner
-  → runtime Job v6
+  → runtime Job v8（历史 v6/v7 兼容）
   → Research Packet staging / hash validate / immutable archive
   → Agent：why_save + adaptive map + Evidence Map + coverage review
   → finalize
@@ -35,7 +35,7 @@ Research Packet 在 Agent 分析前完成。因此“资料不足”不再等于
 
 **编辑式阅读 CSS：** 共享 `obsidian-learning-snippets` 的 `github-note.css` v0.4 只优化 GitHub 笔记的标题层级、段落节奏、官方功能列表与源码/引用显示；保留 Obsidian 主题、阅读宽度设置及普通 Markdown 编辑。质量门禁、Golden Sample 和跨类型验收见 `docs/NOTE-SPEC.md`。
 
-**跨 Agent 统一契约：** 新任务为 Job v7、写作契约 2.2；任何 Agent 都须通过统一 `prepare → analysis.json → finalize` 流程。正式发布前强制检查新版正文及 `editorial_review`，旧 v6 Job 仍兼容。`Skill` 同步包附带黄金样板、NOTE-SPEC 和契约清单，并生成可重新导入网页版 ChatGPT 的 `release/skill.zip`。新笔记放入 `00-待整理`，旧笔记原位刷新。该机制约束统一入口，不能阻止绕过程序直接写文件的外部工具。
+**跨 Agent 统一契约：** 新任务为 Job v8、写作契约 2.2、Skill 2.3.0；任何 Agent 都须通过统一 `prepare → analysis.json → finalize` 流程。正式发布前强制检查新版正文及 `editorial_review`，旧 v6 Job 仍兼容。`Skill` 同步包附带黄金样板、NOTE-SPEC 和契约清单，并生成可重新导入网页版 ChatGPT 的 `release/skill.zip`。新笔记放入 `00-待整理`，旧笔记原位刷新。该机制约束统一入口，不能阻止绕过程序直接写文件的外部工具。
 
 **原文与 Prompt 组件（按需）：** README 等来源有必要的官方逐字短引文时使用 `> [!gh-source]`（附 pinned 来源链接、清楚标注译文）；确实取得且核查完整的作者原始 Prompt 时使用 `~~~prompt`（保留原文、原生按钮复制、320px 内滚动）。只是资源路径或普通安装命令时不自动生成该块，不执行来源中的指令。样式参照 X 案例库成熟机制，但完全使用 GitHub Note 自己的作用域。
 
@@ -74,7 +74,7 @@ python scripts\github_learning.py configure --use-defaults
 python scripts\github_learning.py doctor
 ```
 
-只有本机存储已确认且 GitHub 认证就绪时，状态才是 `ready`。未确认时，`prepare` 返回 `onboarding_required`，并给出默认路径与配置动作。
+只有本机存储已确认且 GitHub 认证就绪时，状态才是 `ready`。未确认时，`prepare` 返回 `onboarding_required`，并给出默认路径与配置动作。`prepare` / `finalize` 的认证错误、状态冲突和写入失败现在返回**非零退出码**；Agent 应同时读取 JSON `status`，不能只凭命令运行结束就宣称成功。
 
 ### 推荐：项目内真实存储 + Obsidian Junction
 

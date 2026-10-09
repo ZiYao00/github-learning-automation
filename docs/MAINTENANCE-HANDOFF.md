@@ -23,8 +23,8 @@ github-learning-automation v0.4.1 是一个 GitHub Knowledge Capture 工具，�
 - `source_manifest.json` 是 runtime 分析来源契约；Research Packet 是长期事实底座。
 - 每个 `coverage_required=true` source 必须进入 Evidence Map。
 - `source_status=insufficient` 仍发布 Minimal Capture Note。
-- 相同 `packet_id` + 相同 `observation_fingerprint` 返回 `no_change`；样式升级不得隐式覆盖旧笔记。
-- 新 Job v7 写作契约 `editorial_contract_version=2.2`：sufficient 必须填写 `editorial_headline` / `editorial_body`、五项 `editorial_review` 和 Evidence Map，防止旧版 Skill 静默退回章节模板；旧 v6 Job、Minimal Note 保持兼容。
+- 相同 `packet_id` + 相同 `observation_fingerprint` + 相同 `evidence_set_id` 才返回 `no_change`；新增可核验补证先返回 `update_available`，样式升级不得隐式覆盖旧笔记。
+- 新 Job v8 写作契约 `editorial_contract_version=2.2`：sufficient 必须填写 `editorial_headline` / `editorial_body`、五项 `editorial_review` 和 Evidence Map，防止旧版 Skill 静默退回章节模板；旧 v6/v7 Job、Minimal Note 保持兼容。
 - README 首图最多保存一张：固定 revision + Git blob 核验、≤5 MiB、PNG/JPEG/GIF/WebP，独立存于 `notes_root/_repo-data`。无图或失败不阻断正文发布。
 - v0.4+ runtime 可恢复；v0.3/v5 或更早活动 Job 不隐式迁移。
 - managed marker 之后的用户内容不得在 refresh 时丢失。
@@ -62,6 +62,23 @@ v0.4.x 默认不做：
 
 这些能力以后如需加入，应作为独立模式或 Derived Artifact 评估，不能侵入基础收藏链路。已明确延后的 v0.5 候选项统一记录在 `docs/V0.5-BACKLOG.md`，当前只记录、不执行。
 
+## v8 可靠性增强：修改与回滚边界
+
+- 最新流程只修改主项目 `github-learning-automation`；ODS V2.2 黄金样板、`obsidian-learning-snippets`、历史 Vault 笔记、`## 我的记录`、旧 Research Packet 与其它未提交文件保持原样。
+- 新 Job v8 保留写作契约 V2.2；新增 `evidence_set_id`、`publish_transaction.json`，先拿 `owner/repo` 级 OS 文件锁，再进行目标文件 SHA 校验和安全发布。中断后的 `publishing` 状态恢复时只核对事务结果，不能无条件写第二次；失败与 superseded Job 不得发布。
+- GitHub 原文先核对 Git Blob SHA / bytes，Packet V1 新归档带可选 archive seal；旧 Packet 仍可验证并从其固定 source/resource 列表优先重采，避免 Source Planner 升级与历史归档冲突。大仓库未纳入的候选来源有明确警告。
+- 附加补证不再隐式更新现有笔记：新的有效证据集合使 `prepare` 返回 `update_available`，需用户显式使用 `--refresh-evidence` 进行新一轮分析。只支持自动选择**唯一**补证组；多组返回 `supplement_selection_required`，不可暗中组合。补证清单依然不修改原 Packet。
+- V8 `editorial_body` 的 `prompt` 代码框和 `gh-source` 引用，程序根据固定来源原文执行内容匹配；其它媒体的 HTML、引用式图片及 Obsidian 嵌入被拒绝。程序检查不能替代人工判断功能真实性与文章可读性。
+- 回归入口：`py -3.12 -m unittest discover -s tests -p test_publish_safety.py -q`、`test_git_blob_verification.py`、`test_evidence_v8.py`、`test_editorial_integrity.py`、`test_cli_exit_codes.py`，以及原有 V2.2/历史兼容/Skill 包检查。无 dev dependencies 不擅自安装。
+- 可回滚 Python 代码，但不得自动删除已经写入的补证、事务记录、Snapshot 或 Vault 笔记；如果发布中断需根据事务记录核对目标文件及 hash。暂不引入数据库和跨机器分布式锁；OS 锁保护遵循统一 CLI 的本机 Agent，不替代对其他编辑器的协作约定。
+
+## 本地收尾与隔离的真实 v8 验收
+
+- CLI 对预期的 `analysis_required`、`note_ready`、`no_change`、`update_available` 继续返回 0；认证失败、私有仓库阻断、状态冲突、缺少配置、发布失败及其它异常统一返回非零。回归：`tests/test_cli_exit_codes.py`（全部模拟，不访问 GitHub/用户文件）。
+- 真实公开仓库 `psf/requests@611c6162cbc4ac2020a2f91c7cfa4f3abf9bbb60` 已完成一次隔离 v8 `prepare → 固定来源人工分析 → finalize → no_change` 流程。脚本 `scripts/smoke_v8_isolated.py` 的所有产物保存在 `.runtime/closeout-v8/<run>/`，绝不写入真实 Vault，也不安装或执行目标仓库代码。作者内容按照 v8 的正式规范复核。
+- 真实 Job 的 `agent_handoff.md` 必须随 `CURRENT_JOB_VERSION` 输出 v8，而不能沿用固定“新 Job v7”。回归检查位于 `tests/test_editorial_contract_v7.py`（文件名历史保留）。
+- 完整 `pytest` 与 `ruff` 依赖来自 `pyproject.toml` 的可选开发组。本机 Python 3.12 若未安装，必须明确标为“尚未验证”；不未经授权全局安装或擅自宣称 CI 全通过。提交前仅精确暂存仓库代码、规范和测试，`temp/`、本地配置、`.runtime` 和 Research / Vault 数据必须排除。
+
 ## 修改前检查
 
 1. 阅读 `AGENTS.md`。
@@ -91,6 +108,13 @@ v0.4.x 默认不做：
 - 当前本机直连 Vault 的一次性受控单 CSS 同步：`py -3.12 scripts/sync_github_note_editorial_css.py --check` 后运行 `--apply`。仅允许从已验证的 v0.3 哈希升级至 v0.4 共享 CSS 真源；会备份原文件并检查三个其它 snippet 的 SHA-256。以后升级不得直接复用脚本中的旧版哈希基线而跳过检查。
 - 双组件的独立本地预览可由 `py -3.12 scripts/publish_github_v04_style_preview.py --check` 预检查，然后 `--apply` 创建到 `GitHub-Note/00-待整理/【视觉验收】GitHub Note v0.4 原文与Prompt（可删除）.md`。只引用固定 ODS README 与真实 Seedance Director 仓库的本地来源；不生成第二份正式 Capture Note。已有同名但内容不同的文件会拒绝覆盖。验收后可以人工删除这一个预览文件。
 - 打开 Vault 中的 ODS、v0.4 临时预览和旧版 GitHub Note，用用户当前 Obsidian 主题、阅读宽度插件与 Live Preview 检查真实表现；原生复制按钮应能复制完整 Prompt（Chrome 静态 QA 不能验证剪贴板）。无法进入 GUI 时，应如实标记“客户端视觉验收待确认”。关闭 `github-note.css` 应只撤销视觉增强，不影响笔记内容/图片路径。
+
+## CodexPro V2.2 真实仓库测试发现与修复
+
+- 测试仓库 `rebel0789/codexpro@113472c6ff0a1516b6f223a43cd355abdf2e61ae`：首次 Packet 归档 10 份来源，Source Planner 漏选 `CHATGPT_PROMPT.md`、`CODEX_PROMPT.md` 与 `README_ZH.md`。已增加通用 Prompt/语言变体文档识别，回归测试 `tests/test_prompt_source_planner.py`。
+- **不可变快照后置修复**：使用 `scripts/collect_pinned_supplement.py` 按原提交核对 Git Blob SHA 保存补充证据，主 Packet 不修改。若新 Source Planner 对同一提交选出更多来源，`lifecycle._reuse_immutable_source_selection` 优先保留原先 Packet 的来源集合并确保哈希一致，再走 `no_change`；失败的旧中间 Job 保留、只标记为 `packet_archive_failed`。相关用例在 `tests/test_editorial_contract_v7.py` 和 `tests/test_pinned_supplement.py`。
+- 真实阅读笔记在 `GitHub-Note/00-待整理/codexpro.md`；两份可复制 Prompt 来自 Git Blob 校验的补证目录，并非那 10 份原 Packet。只读验证：`py -3.12 scripts/verify_codexpro_v22_smoke.py`，检查主 Packet 身份、补证哈希、Prompt 逐字一致、Frontmatter、用户记录和 SVG 首图未下载。再次 `prepare https://github.com/rebel0789/codexpro` 返回 `no_change`。
+- 已安装网页版旧 Skill 不会自动更新。对接 ChatGPT/Codex/Claude/WorkBuddy 前先通过 `doctor` 比对 `workflow_skill_version`、`new_job_version` 和 `editorial_contract_version`，构建 `release/skill.zip` 后重新安装，避免使用不懂补证来源的旧指令。
 
 ## 新链接端到端验收与可移植回归
 

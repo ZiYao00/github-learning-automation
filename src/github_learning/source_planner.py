@@ -57,6 +57,9 @@ _NOISE_SEGMENTS = {
 
 _EXACT_PRIORITY = {
     "skill.md": (5, "skill"),
+    "readme_zh.md": (13, "documentation"),
+    "readme_cn.md": (13, "documentation"),
+    "readme.zh-cn.md": (13, "documentation"),
     "agents.md": (8, "agent_guidance"),
     "claude.md": (12, "agent_guidance"),
     "gemini.md": (14, "agent_guidance"),
@@ -271,6 +274,16 @@ def _candidate(
             str(item.get("sha") or ""),
         )
 
+    # Original prompt docs can be linked by package manifests, not the README.
+    # Detect generic prompt file names; no repository-specific hardcoding.
+    if is_doc_file and len(pure.parts) <= 2 and re.search(
+        r"(?:^|[_-])prompts?(?:$|[_-])", pure.stem.casefold()
+    ):
+        return SourcePlanItem(
+            path, "prompt_document", 15 if is_readme_linked else 22,
+            size, str(item.get("sha") or ""),
+        )
+
     priority_kind = _EXACT_PRIORITY.get(name)
     if priority_kind and (len(pure.parts) <= 3 or is_docs_path or is_readme_linked):
         priority, kind = priority_kind
@@ -361,6 +374,43 @@ def plan_additional_sources(
         if len(selected) >= MAX_ADDITIONAL_SOURCES:
             break
     return selected
+
+
+def source_selection_warnings(
+    tree_entries: list[dict[str, Any]],
+    selected: list[SourcePlanItem],
+    *,
+    readme_path: str = "",
+    readme_content: str = "",
+    manifest_paths: set[str] | None = None,
+) -> list[str]:
+    """Report candidate sources omitted by the bounded Source Planner."""
+    readme_links = _relative_readme_links(readme_content, readme_path)
+    skill_repo = any(
+        str(e.get("path") or "").casefold() == "skill.md" and e.get("type") == "blob"
+        for e in tree_entries
+    )
+    chosen = {e.path for e in selected}
+    others: list[SourcePlanItem] = []
+    for item in tree_entries:
+        candidate = _candidate(
+            item, readme_path=readme_path,
+            manifest_paths=manifest_paths or set(),
+            readme_links=readme_links, skill_repo=skill_repo,
+        )
+        if candidate is not None and candidate.path not in chosen:
+            others.append(candidate)
+    if not others:
+        return []
+    others.sort(key=lambda e: (e.priority,e.path.casefold()))
+    preview = ", ".join(e.path for e in others[:15])
+    if len(others) > 15:
+        preview += f" 等（另有 {len(others)-15} 个）"
+    return [
+        f"Source Planner 容量/优先级限制：{len(others)} 个候选来源未纳入本次分析 "
+        f"（最多 {MAX_ADDITIONAL_SOURCES} 个附加来源，分析预算 {MAX_TOTAL_SOURCE_BYTES} 字节）。"
+        f"未选路径：{preview}。需要时先核对固定 Git Tree，再按补证流程显式获取。"
+    ]
 
 
 def plan_archive_resources(

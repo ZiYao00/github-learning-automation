@@ -59,6 +59,14 @@ prepare 获取默认分支 HEAD commit，并把仓库文件读取固定到同一
 
 仓库文件使用 Git revision 固定。Latest Release 等动态平台信息属于 Observation，不属于 commit Snapshot。
 
+## 三个不同的执行契约（Unreleased）
+
+- **证据契约：** immutable `owner/repo@revision` Packet + 受控 Supplement → 内容哈希 `evidence_set_id`；新来源先校验 Git Blob，之后才截断和归档。仓库 revision 未改变不等于有效证据集未改变。
+- **任务契约：** 新 Job v8 / 写作契约 V2.2，终止或失败状态不得发布；`update_available` 需显式 `--refresh-evidence` 才重新分析，v6/v7 原状兼容。
+- **发布事务：** `repository_lock`、目标 SHA 校验、独占新建、短事务记录和中断恢复，错误时不覆盖。
+
+以上均由 Python 核心强制；Skill 只是让各 Agent 使用同一入口。浏览器 Skill 不能单独访问或操作本地目录。
+
 ## Source Planner
 
 Source Planner 决定两件不同的事：
@@ -104,7 +112,7 @@ runtime
 
 核心文件与每个 source/resource 都使用 SHA-256 完整性检查。
 
-## Job v6
+## Job v8（历史 Job v6/v7 保持兼容）
 
 主状态：
 
@@ -113,6 +121,7 @@ collected
 → packet_archived
 → analysis_required
 → analysis_complete
+→ publishing（OS 仓库锁、CAS、事务记录）
 → published
 ~~~
 

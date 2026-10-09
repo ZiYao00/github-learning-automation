@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 
 from .auth import API_ROOT, USER_AGENT, GitHubAuth, resolve_github_auth
 from .source_planner import (
@@ -14,9 +16,11 @@ from .source_planner import (
     MAX_FILE_BYTES,
     MAX_TOTAL_SOURCE_BYTES,
     ROOT_MANIFESTS,
+    SourcePlanItem,
     classify_repository,
     plan_additional_sources,
     plan_archive_resources,
+    source_selection_warnings,
 )
 
 
@@ -91,17 +95,53 @@ def _request_json(url: str, auth: GitHubAuth | None = None) -> Any:
         raise GitHubFetchError("network_error", f"无法连接 GitHub API：{exc.reason}") from exc
 
 
+def _git_blob_sha(data: bytes) -> str:
+    return hashlib.sha1(b"blob " + str(len(data)).encode("ascii") + b"\0" + data).hexdigest()
+
+
+def _verify_git_blob(data: bytes, sha: str, size: int, path: str) -> None:
+    if (not re.fullmatch(r"[0-9a-f]{40}", sha, re.I)
+            or (size and len(data) != size)
+            or _git_blob_sha(data) != sha.lower()):
+        raise GitHubFetchError(
+            "source_blob_mismatch",
+            f"固定提交中 {path} 的原始字节与 Git SHA / size 不匹配，拒绝归档。",
+        )
+
+
+def _request_raw_bytes(url: str, auth: GitHubAuth) -> bytes:
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme != "https" or parsed.hostname != "raw.githubusercontent.com":
+        raise GitHubFetchError("unsafe_raw_url", "拒绝读取非 GitHub Raw 地址。")
+    req = urllib.request.Request(
+        url,
+        headers={"User-Agent": USER_AGENT},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=20) as response:
+            if urllib.parse.urlparse(response.geturl()).hostname != "raw.githubusercontent.com":
+                raise GitHubFetchError("unsafe_redirect", "源文件发生了跨域重定向。")
+            content = response.read(2_000_001)
+        if len(content) > 2_000_000:
+            raise GitHubFetchError("source_too_large", "原始文本超过 2 MB 验证上限，拒绝截断冒充完整资料。")
+        return content
+    except urllib.error.HTTPError as exc:
+        raise GitHubFetchError("optional_source_unavailable", f"GitHub Raw 返回 HTTP {exc.code}", exc.code) from exc
+    except urllib.error.URLError as exc:
+        raise GitHubFetchError("optional_source_unavailable", f"GitHub Raw 读取失败：{exc.reason}") from exc
+
+
 def _request_text(url: str, auth: GitHubAuth) -> str:
     parsed = urllib.parse.urlparse(url)
     if parsed.scheme != "https" or parsed.hostname != "raw.githubusercontent.com":
         raise GitHubFetchError("unsafe_raw_url", f"拒绝读取非 GitHub Raw 地址：{url}")
     req = urllib.request.Request(
         url,
-        headers={"User-Agent": USER_AGENT, **({"Authorization": f"Bearer {auth.token}"} if auth.token else {})},
+        headers={"User-Agent": USER_AGENT},
     )
     try:
         with urllib.request.urlopen(req, timeout=20) as response:
-            return response.read().decode("utf-8", errors="replace")
+            return response.read().decode("utf-8", errors="strict")
     except urllib.error.HTTPError as exc:
         raise GitHubFetchError("optional_source_unavailable", f"GitHub Raw 文件读取失败：HTTP {exc.code}", exc.code) from exc
     except urllib.error.URLError as exc:
@@ -153,9 +193,16 @@ def _fetch_planned_text(
     limit: int = MAX_FILE_BYTES,
 ) -> tuple[SourceDocument | None, str | None]:
     try:
-        content = _request_text(_raw_url(full_name, revision, path), auth)
+        raw = _request_raw_bytes(_raw_url(full_name, revision, path), auth)
     except GitHubFetchError as exc:
-        return None, f"可选来源 {path} 读取失败，已跳过：{exc}"
+        if exc.code in {"optional_source_unavailable", "source_too_large"}:
+            return None, f"可选来源 {path} 读取失败，已跳过：{exc}"
+        raise
+    _verify_git_blob(raw, sha, size, path)
+    try:
+        content = raw.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as exc:
+        raise GitHubFetchError("source_encoding_invalid", f"来源 {path} 非 UTF-8，拒绝将替换字符作为原文。") from exc
     clipped, truncated = _truncate(content, limit)
     archive_content, archive_truncated = _truncate(content, MAX_CANDIDATE_FILE_BYTES)
     return (
@@ -244,7 +291,10 @@ def _release_observation(release: dict[str, Any] | None) -> dict[str, Any] | Non
     }
 
 
-def fetch_repository_sources(full_name: str, auth: GitHubAuth | None = None) -> SourceBundle:
+def fetch_repository_sources(
+    full_name: str, auth: GitHubAuth | None = None,
+    *, pinned_packet_loader: Callable[[str], dict[str, Any] | None] | None = None,
+) -> SourceBundle:
     auth = auth or resolve_github_auth()
     warnings: list[str] = []
 
@@ -259,13 +309,26 @@ def fetch_repository_sources(full_name: str, auth: GitHubAuth | None = None) -> 
     encoded_branch = urllib.parse.quote(default_branch, safe="")
     commit = _request_json(f"{API_ROOT}/repos/{full_name}/commits/{encoded_branch}", auth)
     revision = str(commit.get("sha") or "")
+    pinned_packet = pinned_packet_loader(revision) if pinned_packet_loader and revision else None
     tree_sha = str(((commit.get("commit") or {}).get("tree") or {}).get("sha") or "")
     if not revision or not tree_sha:
         raise GitHubFetchError("snapshot_unavailable", "无法确定仓库 HEAD commit/tree，拒绝生成混合版本来源包。")
 
     try:
         readme_payload = _request_json(_with_ref(f"{API_ROOT}/repos/{full_name}/readme", revision), auth)
-        readme_full = _decode_content(readme_payload)
+        encoded = readme_payload.get("content") or ""
+        if readme_payload.get("encoding") == "base64":
+            readme_bytes = base64.b64decode(encoded, validate=False)
+        else:
+            readme_bytes = str(encoded).encode("utf-8")
+        _verify_git_blob(
+            readme_bytes, str(readme_payload.get("sha") or ""),
+            int(readme_payload.get("size") or 0), str(readme_payload.get("path") or "README.md"),
+        )
+        try:
+            readme_full = readme_bytes.decode("utf-8", errors="strict")
+        except UnicodeDecodeError as exc:
+            raise GitHubFetchError("source_encoding_invalid", "README 不是 UTF-8，无法归档准确原文。") from exc
         readme = readme_full[:120_000]
         readme_path = str(readme_payload.get("path") or "README.md")
         readme_sha = str(readme_payload.get("sha") or "")
@@ -335,7 +398,10 @@ def fetch_repository_sources(full_name: str, auth: GitHubAuth | None = None) -> 
         remaining_budget -= len(readme_document.content.encode("utf-8"))
 
     manifest_paths: set[str] = set()
+    required_pinned_paths = {str(e.get("path") or "") for e in pinned_packet.get("sources", [])} if pinned_packet else None
     for name in sorted(ROOT_MANIFESTS, key=str.casefold):
+        if required_pinned_paths is not None and name not in required_pinned_paths:
+            continue
         entry = root_tree.get(name)
         if not entry:
             continue
@@ -362,12 +428,34 @@ def fetch_repository_sources(full_name: str, auth: GitHubAuth | None = None) -> 
             warnings.append(warning)
 
     source_profile = classify_repository(tree_entries)
-    planned_sources = plan_additional_sources(
-        tree_entries,
-        readme_path=readme_path,
-        readme_content=readme_full or readme,
-        manifest_paths=manifest_paths,
-    )
+    if pinned_packet is not None:
+        if pinned_packet.get("content_profile") != source_profile:
+            raise GitHubFetchError("pinned_profile_changed", "现有不可变 Packet 的仓库类型与本次不同，拒绝隐式重建。")
+        handled = {doc.path for doc in sources}
+        planned_sources = [
+            SourcePlanItem(
+                path=str(entry["path"]), kind=str(entry["kind"]),
+                priority=0, size=int(entry.get("original_bytes") or 0),
+                sha=str(entry.get("repository_sha") or ""),
+                archive_role=str(entry.get("archive_role") or "source"),
+                analysis_mode=str(entry.get("analysis_mode") or "full"),
+                authority=str(entry.get("authority") or "repository_authored"),
+                coverage_required=bool(entry.get("coverage_required", True)),
+            )
+            for entry in pinned_packet.get("sources", []) if entry.get("path") not in handled
+        ]
+        warnings.append("已存在固定版本 Research Packet；本次按其原始来源清单采集，新增来源须单独补证。")
+    else:
+        planned_sources = plan_additional_sources(
+            tree_entries,
+            readme_path=readme_path,
+            readme_content=readme_full or readme,
+            manifest_paths=manifest_paths,
+        )
+        warnings.extend(source_selection_warnings(
+            tree_entries, planned_sources, readme_path=readme_path,
+            readme_content=readme_full or readme, manifest_paths=manifest_paths,
+        ))
     for planned in planned_sources:
         document, warning = _fetch_planned_text(
             full_name,
@@ -393,11 +481,23 @@ def fetch_repository_sources(full_name: str, auth: GitHubAuth | None = None) -> 
             warnings.append(warning)
 
     selected_paths = {document.path for document in sources}
-    for planned in plan_archive_resources(
-        tree_entries,
-        source_profile=source_profile,
-        selected_paths=selected_paths,
-    ):
+    if pinned_packet is not None:
+        planned_resources = [
+            SourcePlanItem(
+                path=str(entry["path"]), kind=str(entry["kind"]),
+                priority=0, size=int(entry.get("original_bytes") or 0),
+                sha=str(entry.get("repository_sha") or ""),
+                archive_role="resource", analysis_mode=str(entry.get("analysis_mode") or "index_only"),
+                authority=str(entry.get("authority") or "repository_authored"),
+                coverage_required=bool(entry.get("coverage_required", False)),
+            )
+            for entry in pinned_packet.get("resources", [])
+        ]
+    else:
+        planned_resources = plan_archive_resources(
+            tree_entries, source_profile=source_profile, selected_paths=selected_paths,
+        )
+    for planned in planned_resources:
         document, warning = _fetch_planned_text(
             full_name,
             revision,

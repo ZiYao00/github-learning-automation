@@ -2,14 +2,18 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import uuid
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from .config import Settings
 from .evidence import validate_evidence_map
+from .evidence_contract import evidence_set_id
+from .editorial_integrity import validate_media_markup, validate_source_literals
 from .first_image import materialize_first_image
 from .github_client import SourceBundle, SourceDocument
 from .input_resolver import ResolvedRepository
@@ -23,14 +27,16 @@ from .note_template import (
     render_note,
     safe_title,
 )
-from .research_packet import ResearchPacketError, archive_runtime_packet, packet_id
+from .research_packet import ResearchPacketError, archive_runtime_packet, packet_id, packet_path, validate_packet
+from .publish_safety import PublishSafetyError, json_atomic, publish_bytes, repository_lock, sha256
 from .source_planner import is_media_path
 
-_ACTIVE_JOB_STATES = {"collected", "packet_archived", "analysis_required", "analysis_complete"}
+_ACTIVE_JOB_STATES = {"collected", "packet_archived", "analysis_required", "analysis_complete", "publishing"}
 # Runtime v7 enforces the editorial contract for new sufficient Capture Notes.
 # Legacy v6 jobs keep their existing resume/finalize behavior.
-CURRENT_JOB_VERSION = 7
+CURRENT_JOB_VERSION = 8
 EDITORIAL_CONTRACT_VERSION = "2.2"
+WORKFLOW_SKILL_VERSION = "2.3.0"
 
 
 def _file_sha256(path: Path) -> str:
@@ -45,7 +51,7 @@ def _read_json(path: Path) -> dict[str, Any]:
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    json_atomic(path, payload)
 
 
 def _active_jobs(settings: Settings, full_name: str) -> list[tuple[str, Path, dict[str, Any]]]:
@@ -146,6 +152,9 @@ def preflight_publish(
         raise ValueError(f"不支持的 publish_mode：{publish_mode}")
 
     if publish_mode == "upsert":
+        if restart_job and any(job.get("state") == "publishing" for _, _, job in _active_jobs(settings, full_name)):
+            return {"status": "publish_in_progress", "repository": full_name,
+                    "message": "另一任务正在发布；不能在写入中途标记 superseded。"}
         if not restart_job:
             in_progress = _find_in_progress_job(settings, full_name)
             if in_progress:
@@ -513,9 +522,9 @@ def _handoff(resolved: ResolvedRepository, bundle: SourceBundle) -> str:
 - Revision: {bundle.revision}
 - Source profile: {bundle.source_profile}
 
-## 强制写作契约：V2.2（新 Job v7）
+## 强制写作契约：V2.2（新 Job v{CURRENT_JOB_VERSION}）
 
-- 本次 Job 的 `editorial_contract_version` = `2.2`；`analysis.json` 必须保留此版本值。新 Job 缺少 `editorial_headline` 或 `editorial_body`、或版本不符时，`finalize` 将拒绝完整发布，**不会退回旧章节模板**。若没有有效证据则标记 insufficient，按 Minimal Note 流程发布。
+- 本次 Job 的 `editorial_contract_version` = `2.2`；`analysis.json` 必须保留此版本值，并保留 prepare 后生成的 `evidence_set_id`（v8）。新 Job 缺少 `editorial_headline` 或 `editorial_body`、或版本不符时，`finalize` 将拒绝完整发布，**不会退回旧章节模板**。若没有有效证据则标记 insufficient，按 Minimal Note 流程发布。
 - 本地项目规范真源：`docs/NOTE-SPEC.md`；经确认的黄金样板：`docs/ODS-NATURAL-PRODUCT-V2.2-REFERENCE.md`。独立安装的 Agent Skill 必须能读取其随包 `references/`。如果接入环境仍在使用旧版 Skill，请先更新，而不是按记忆续写。
 
 ## 新默认：A 版自然产品解读（必须填写 editorial_body）
@@ -565,7 +574,7 @@ def _handoff(resolved: ResolvedRepository, bundle: SourceBundle) -> str:
 - Collection warnings 只表示采集缺口，不等于仓库没有对应内容。
 - 仓库作者经验不等于外部平台官方规则；只有明确的外部官方来源才能提升 authority。
 - 最后重新逐项对照来源，确认 Evidence Map 完整且没有引入无来源事实，再把 coverage_review.status 设为 passed。
-- **V2.2 出稿审查另有 editorial_review 门禁（新 Job v7）：** 独立填写 repository_type_rationale、official_highlights、claims_and_limits、source_traceability、readability，逐项说明已经核对的判断及主要来源，确认后才把 editorial_review.status 写成 passed。不得敷衍或把“字段填写完毕”当作真实核查；程序只能检查该审查记录是否完整，不能自动证明语义准确。
+- **V2.2 出稿审查另有 editorial_review 门禁（新 Job v{CURRENT_JOB_VERSION}）：** 独立填写 repository_type_rationale、official_highlights、claims_and_limits、source_traceability、readability，逐项说明已经核对的判断及主要来源，确认后才把 editorial_review.status 写成 passed。不得敷衍或把“字段填写完毕”当作真实核查；程序只能检查该审查记录是否完整，不能自动证明语义准确。
 """
 
 
@@ -582,6 +591,102 @@ def _packet_result(settings: Settings, job_dir: Path, job: dict[str, Any]) -> di
     return archived
 
 
+def _reuse_immutable_source_selection(settings: Settings, bundle: SourceBundle) -> SourceBundle:
+    """Keep an existing repo@revision Packet identical after planner upgrades.
+
+    New planner-selected files are never added to an already archived snapshot.
+    Distinct pinned sources may be stored as a separately verified supplement.
+    If original sources are now unavailable, fail closed instead of silently
+    regenerating or weakening the immutable Research Packet.
+    """
+    if settings.research_root is None:
+        return bundle
+    full_name = str(bundle.repository.get("full_name") or "")
+    if not full_name or not bundle.revision:
+        return bundle
+    target = packet_path(settings.research_root, full_name, bundle.revision)
+    if not target.is_dir():
+        return bundle
+    archived = validate_packet(target)
+    if archived.get("packet_id") != packet_id(full_name, bundle.revision):
+        raise ResearchPacketError("packet_identity_mismatch", "已有 Packet 的身份不匹配。")
+    if archived.get("content_profile") != bundle.source_profile:
+        raise ResearchPacketError("packet_source_profile_changed", "已有 Packet 的仓库类型与本次识别不一致，拒绝隐式修改。")
+
+    def original_order(entries: list[dict[str, Any]], current: tuple[SourceDocument, ...], role: str) -> tuple[SourceDocument, ...]:
+        fresh = {item.path: item for item in current}
+        selected: list[SourceDocument] = []
+        for entry in entries:
+            path = str(entry.get("path") or "")
+            item = fresh.get(path)
+            if item is None or item.sha != entry.get("repository_sha"):
+                raise ResearchPacketError(
+                    "packet_source_selection_missing",
+                    f"旧版固定快照要求的 {role} 在本次采集不可用：{path}。禁止修改或覆盖旧 Packet。",
+                )
+            actual_archive = (item.archive_content or item.content) if role == "source" else item.content
+            if hashlib.sha256(actual_archive.encode("utf-8")).hexdigest() != entry.get("sha256"):
+                raise ResearchPacketError(
+                    "packet_source_content_changed",
+                    f"同一提交的 {role} 内容与归档不一致：{path}，已停止。",
+                )
+            selected.append(item)
+        return tuple(selected)
+
+    canonical_sources = original_order(archived.get("sources") or [], bundle.sources, "source")
+    canonical_resources = original_order(archived.get("resources") or [], bundle.resources, "resource")
+    if (canonical_sources == bundle.sources and canonical_resources == bundle.resources):
+        return bundle
+    return replace(bundle, sources=canonical_sources, resources=canonical_resources)
+
+
+def _available_supplements(job_dir: Path, job: dict[str, Any]) -> list[dict[str, Any]]:
+    """Discover only fully verified append-only supplements for this Packet."""
+    packet_root = Path(str(job.get("packet_path") or ""))
+    supplements_root = packet_root.parent.parent / "supplements" / str(job.get("revision") or "")
+    if not supplements_root.is_dir():
+        return []
+    full_name = str((job.get("repository") or {}).get("full_name") or "")
+    result: list[dict[str, Any]] = []
+    for candidate in sorted(supplements_root.iterdir()):
+        if not candidate.is_dir() or not re.fullmatch(r"[0-9a-f]{16}", candidate.name):
+            continue
+        manifest_path = candidate / "manifest.json"
+        if not manifest_path.is_file():
+            raise ValueError("补证目录存在但清单丢失： " + str(candidate))
+        manifest = _read_json(manifest_path)
+        supplemental = {
+            "supplement_id": full_name + "@" + str(job["revision"]) + ":" + candidate.name,
+            "paths": [entry["path"] for entry in manifest.get("sources", [])],
+        }
+        _validate_supplemental_evidence(job_dir, job, {"supplemental_evidence": supplemental})
+        result.append({**supplemental, "manifest_sha256": _file_sha256(manifest_path)})
+    return result
+
+
+def _expected_evidence_set(job: dict[str, Any], supplements: list[dict[str, Any]]) -> str:
+    return evidence_set_id(
+        str(job.get("packet_content_fingerprint") or ""),
+        [(s["supplement_id"], s["manifest_sha256"]) for s in supplements],
+    )
+
+
+def _stamp_evidence(job_dir: Path, job: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    available = _available_supplements(job_dir, job)
+    job["available_supplements"] = available
+    job["evidence_set_id"] = _expected_evidence_set(job, available)
+    analysis = _read_json(job_dir / "analysis.json")
+    analysis["evidence_set_id"] = job["evidence_set_id"]
+    if len(available) == 1:
+        analysis["supplemental_evidence"] = {
+            "supplement_id": available[0]["supplement_id"],
+            "paths": available[0]["paths"],
+        }
+    _write_json(job_dir / "analysis.json", analysis)
+    _write_json(job_dir / "job.json", job)
+    return job, available
+
+
 def prepare_job(
     settings: Settings,
     resolved: ResolvedRepository,
@@ -590,6 +695,7 @@ def prepare_job(
     publish_mode: str = "upsert",
     replace_legacy: bool = False,
     restart_job: bool = False,
+    refresh_evidence: bool = False,
 ) -> dict[str, Any]:
     preflight = preflight_publish(
         settings,
@@ -601,6 +707,7 @@ def prepare_job(
     if preflight["status"] != "ready":
         return preflight
 
+    bundle = _reuse_immutable_source_selection(settings, bundle)
     job_id = f"{resolved.owner}__{resolved.repo}__{uuid.uuid4().hex[:8]}"
     job_dir = settings.runtime_root / job_id
     job_dir.mkdir(parents=True, exist_ok=False)
@@ -657,8 +764,21 @@ def prepare_job(
         newline="\n",
     )
 
-    archived = _packet_result(settings, job_dir, job)
+    try:
+        archived = _packet_result(settings, job_dir, job)
+    except ResearchPacketError as exc:
+        job["state"] = "packet_archive_failed"
+        job["packet_error_code"] = exc.code
+        _write_json(job_dir / "job.json", job)
+        raise
     job = _read_json(job_dir / "job.json")
+    job, available = _stamp_evidence(job_dir, job)
+    if len(available) > 1:
+        job["state"] = "supplement_selection_required"
+        _write_json(job_dir / "job.json", job)
+        return {"status": "supplement_selection_required", "job_dir": str(job_dir),
+                "supplements": available,
+                "message": "同一提交存在多组补证，需明确选择一个或整理来源集合，不能自动拼接。"}
 
     if publish_mode == "upsert" and preflight.get("note_path"):
         existing_note = Path(str(preflight["note_path"]))
@@ -667,18 +787,35 @@ def prepare_job(
             metadata.get("packet_id") == str(job.get("packet_id") or "")
             and metadata.get("observation_fingerprint") == str(job.get("observation_fingerprint") or "")
         ):
-            result = {
-                "status": "no_change",
-                "repository": resolved.full_name,
-                "revision": bundle.revision,
-                "packet_id": str(job.get("packet_id") or ""),
-                "note_path": str(existing_note),
-                "job_dir": str(job_dir),
-            }
-            _persist_job_state(job_dir, job, "no_change", final_result=result)
-            if restart_job:
-                _supersede_in_progress_jobs(settings, resolved.full_name, job_id)
-            return result
+            previous_set = metadata.get("evidence_set_id")
+            new_set = str(job.get("evidence_set_id") or "")
+            evidence_changed = (bool(previous_set) and previous_set != new_set) or (
+                not previous_set and bool(available)
+            )
+            if evidence_changed and not refresh_evidence:
+                result = {
+                    "status": "update_available", "repository": resolved.full_name,
+                    "job_dir": str(job_dir), "note_path": str(existing_note),
+                    "evidence_set_id": new_set, "available_supplements": available,
+                    "next_action": "请明确使用 prepare --refresh-evidence 重新分析，不自动覆盖笔记。",
+                }
+                _persist_job_state(job_dir, job, "update_available", final_result=result)
+                if restart_job:
+                    _supersede_in_progress_jobs(settings, resolved.full_name, job_id)
+                return result
+            if not evidence_changed:
+                result = {
+                    "status": "no_change",
+                    "repository": resolved.full_name,
+                    "revision": bundle.revision,
+                    "packet_id": str(job.get("packet_id") or ""),
+                    "note_path": str(existing_note),
+                    "job_dir": str(job_dir),
+                }
+                _persist_job_state(job_dir, job, "no_change", final_result=result)
+                if restart_job:
+                    _supersede_in_progress_jobs(settings, resolved.full_name, job_id)
+                return result
 
     job["state"] = "analysis_required"
     _write_json(job_dir / "job.json", job)
@@ -697,6 +834,7 @@ def prepare_job(
         "packet_status": archived["status"],
         "packet_id": archived["packet_id"],
         "packet_path": archived["packet_path"],
+        "evidence_set_id": str(job.get("evidence_set_id") or ""),
         "analysis_path": str(job_dir / "analysis.json"),
         "handoff_path": str(job_dir / "agent_handoff.md"),
         "source_manifest_path": str(source_manifest_path),
@@ -721,9 +859,26 @@ def resume_prepare(settings: Settings, job_dir: Path) -> dict[str, Any]:
         }
 
     state = str(job.get("state") or "")
+    if state == "publishing":
+        return finalize_job(settings, job_dir)
+    if state not in _ACTIVE_JOB_STATES:
+        return {"status": "invalid_job_state", "state": state, "job_dir": str(job_dir)}
     if state in {"collected", "packet_archived"}:
-        archived = _packet_result(settings, job_dir, job)
+        try:
+            archived = _packet_result(settings, job_dir, job)
+        except ResearchPacketError as exc:
+            job["state"] = "packet_archive_failed"
+            job["packet_error_code"] = exc.code
+            _write_json(job_dir / "job.json", job)
+            raise
         job = _read_json(job_dir / "job.json")
+        if int(job.get("version") or 0) >= 8 and not job.get("evidence_set_id"):
+            job, available = _stamp_evidence(job_dir, job)
+            if len(available) > 1:
+                job["state"] = "supplement_selection_required"
+                _write_json(job_dir / "job.json", job)
+                return {"status": "supplement_selection_required", "job_dir": str(job_dir),
+                        "supplements": available}
         job["state"] = "analysis_required"
         _write_json(job_dir / "job.json", job)
     else:
@@ -778,6 +933,66 @@ def _markdown_outside_fenced_code(markdown: str) -> str:
     return "\n".join(visible)
 
 
+def _validate_supplemental_evidence(job_dir: Path, job: dict[str, Any], analysis: dict[str, Any]) -> None:
+    """Validate optional append-only author sources tied to the same Git commit.
+
+    Supplements never alter the immutable primary Research Packet or required
+    Evidence Map; they are independently verified against pinned Git tree data.
+    """
+    supplement = analysis.get("supplemental_evidence")
+    if supplement is None:
+        return
+    if not isinstance(supplement, dict):
+        raise ValueError("supplemental_evidence must be a provenance object")
+    repo = str((job.get("repository") or {}).get("full_name") or "")
+    revision = str(job.get("revision") or "")
+    expected_prefix = repo + "@" + revision + ":"
+    supplement_id = str(supplement.get("supplement_id") or "")
+    key = supplement_id[len(expected_prefix):] if supplement_id.startswith(expected_prefix) else ""
+    if not re.fullmatch(r"[0-9a-f]{16}", key):
+        raise ValueError("supplemental_evidence ID does not match pinned repository")
+    packet_root = Path(str(job.get("packet_path") or "")).resolve()
+    if not packet_root.is_dir():
+        raise ValueError("supplemental_evidence primary Packet missing")
+    existing_packet = validate_packet(packet_root)
+    supplement_dir = packet_root.parent.parent / "supplements" / revision / key
+    manifest_file = supplement_dir / "manifest.json"
+    if not manifest_file.is_file():
+        raise ValueError("supplemental_evidence manifest missing")
+    manifest = _read_json(manifest_file)
+    if (manifest.get("kind") != "append_only_pinned_supplement"
+            or manifest.get("repository") != repo or manifest.get("revision") != revision
+            or manifest.get("packet_id") != job.get("packet_id")
+            or manifest.get("packet_content_fingerprint") != existing_packet.get("content_fingerprint")):
+        raise ValueError("supplemental_evidence is not bound to the immutable Packet")
+    expected_paths = supplement.get("paths")
+    if (not isinstance(expected_paths, list) or not expected_paths
+            or not all(isinstance(p, str) for p in expected_paths)):
+        raise ValueError("supplemental_evidence paths missing")
+    entries = manifest.get("sources")
+    if not isinstance(entries, list) or [e.get("path") for e in entries] != expected_paths:
+        raise ValueError("supplemental_evidence path list mismatch")
+    tree = _read_json(job_dir / "tree-index.json")
+    pinned = {e["path"]: e for e in tree.get("entries", [])}
+    import hashlib as _hashlib
+    for entry in entries:
+        path = entry.get("path")
+        if not isinstance(path, str) or not re.fullmatch(r"[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+){0,2}\.md", path, re.I):
+            raise ValueError("supplemental_evidence path invalid")
+        rel = str(entry.get("stored_as") or "")
+        if not re.fullmatch(r"files/[0-9]{3}_[a-f0-9]{12}\.md", rel):
+            raise ValueError("supplemental_evidence storage path invalid")
+        raw = (supplement_dir / rel).read_bytes()
+        expected_blob = _hashlib.sha1(b"blob " + str(len(raw)).encode("ascii") + b"\0" + raw).hexdigest()
+        original = pinned.get(path) or {}
+        if (hashlib.sha256(raw).hexdigest() != entry.get("sha256")
+                or len(raw) != entry.get("bytes")
+                or expected_blob != entry.get("repository_sha")
+                or expected_blob != original.get("sha")
+                or len(raw) != original.get("size")):
+            raise ValueError("supplemental_evidence bytes differ from pinned Git tree")
+
+
 def _validate_analysis(job_dir: Path, analysis: dict[str, Any]) -> None:
     if analysis.get("source_status") != "sufficient":
         raise ValueError("来源尚未被 Agent 判定为 sufficient，拒绝完整发布。")
@@ -792,7 +1007,7 @@ def _validate_analysis(job_dir: Path, analysis: dict[str, Any]) -> None:
     # New jobs ship with editorial_body; old in-progress v0.4 jobs remain compatible.
     job_path = job_dir / "job.json"
     job = _read_json(job_path) if job_path.is_file() else {}
-    must_use_v22 = int(job.get("version") or 0) >= CURRENT_JOB_VERSION
+    must_use_v22 = int(job.get("version") or 0) >= 7
     if must_use_v22:
         if (job.get("editorial_contract_version") != EDITORIAL_CONTRACT_VERSION
                 or analysis.get("editorial_contract_version") != EDITORIAL_CONTRACT_VERSION):
@@ -806,8 +1021,7 @@ def _validate_analysis(job_dir: Path, analysis: dict[str, Any]) -> None:
         exposed_markdown = _markdown_outside_fenced_code(editorial)
         if re.search(r"(?im)^\s*#\s+", exposed_markdown):
             raise ValueError("editorial_body 不得包含重复的 # 主标题。")
-        if re.search(r"(?i)<\s*(?:script|iframe|object|embed|style)\b|!\[\[|!\[[^]]*\]\(", exposed_markdown):
-            raise ValueError("editorial_body 不得嵌入自定义 HTML 或图片，首图由程序处理。")
+        validate_media_markup(editorial)
         headline = str(analysis.get("editorial_headline") or "").strip()
         if not headline or len(headline) > 110 or "\n" in headline or "\r" in headline:
             raise ValueError("analysis.editorial_headline 必须是简洁的单行中文标题。")
@@ -830,6 +1044,17 @@ def _validate_analysis(job_dir: Path, analysis: dict[str, Any]) -> None:
         raise ValueError("analysis.tags 建议保持 2-5 个；程序会额外加入 GitHub 标签。")
     manifest = _read_json(job_dir / "source_manifest.json")
     validate_evidence_map(manifest, analysis)
+    if must_use_v22:
+        _validate_supplemental_evidence(job_dir, job, analysis)
+    if int(job.get("version") or 0) >= 8:
+        if analysis.get("evidence_set_id") != job.get("evidence_set_id") or not job.get("evidence_set_id"):
+            raise ValueError("新 Job v8 的 evidence_set_id 缺失或与准备阶段不同。")
+        available = job.get("available_supplements") or []
+        expected_supplement = ({"supplement_id": available[0]["supplement_id"],
+                                "paths": available[0]["paths"]} if len(available) == 1 else None)
+        if analysis.get("supplemental_evidence") != expected_supplement:
+            raise ValueError("本次分析引用的补充证据与准备阶段不一致，禁止跳过或替换。")
+        validate_source_literals(str(analysis.get("editorial_body") or ""), job, analysis)
 
 
 def _write_note_atomic(path: Path, text: str) -> None:
@@ -854,16 +1079,16 @@ def _publish_capture_note(
     renderer: Any,
     replace_legacy: bool,
 ) -> dict[str, Any]:
+    """Publish under the caller-held repository lock with a recoverable record."""
     repo = job["repository"]
     full_name = str(repo["full_name"])
     owner, _repo_name = full_name.split("/", 1)
     publish_mode = str(job.get("publish_mode") or "upsert")
     matches = find_notes_by_repository(settings.notes_root, full_name)
-
     if publish_mode == "upsert" and len(matches) > 1:
         return {
             "status": "duplicate_repository_notes",
-            "message": "同一 repository identity 找到多篇笔记，自动 refresh 已停止，请先人工确认。",
+            "message": "同一仓库存在多篇正式笔记，拒绝自动覆盖。",
             "repository": full_name,
             "matches": [str(path) for path in matches],
             "job_dir": str(job_dir),
@@ -881,9 +1106,22 @@ def _publish_capture_note(
                 render_job = {**job, "first_readme_image": first_image_result["link"]}
         return renderer(render_job, analysis, preserved_tail=preserved_tail)
 
+    path: Path
+    expected_old: str | None = None
     if publish_mode == "upsert" and len(matches) == 1:
         path = matches[0]
-        existing = path.read_text(encoding="utf-8")
+        old_bytes = path.read_bytes()
+        expected_old = sha256(old_bytes)
+        if int(job.get("version") or 0) >= 8:
+            originally_targeted = str(job.get("target_note") or "")
+            originally_hash = str(job.get("target_note_sha256") or "")
+            if (not originally_targeted or Path(originally_targeted).resolve() != path.resolve()
+                    or originally_hash != expected_old):
+                return {
+                    "status": "note_target_changed", "job_dir": str(job_dir),
+                    "note_path": str(path), "message": "prepare 后目标笔记发生变化或首次出现；请重新准备任务。",
+                }
+        existing = old_bytes.decode("utf-8")
         if not has_managed_region(existing):
             job_authorized = bool(job.get("replace_legacy_authorized"))
             if job_authorized and not replace_legacy:
@@ -891,56 +1129,56 @@ def _publish_capture_note(
                 target_hash = str(job.get("target_note_sha256") or "").strip()
                 new_job_missing_target = int(job.get("version") or 0) >= 4 and (not target_note or not target_hash)
                 path_changed = bool(target_note) and Path(target_note).resolve() != path.resolve()
-                content_changed = bool(target_hash) and _file_sha256(path) != target_hash
+                content_changed = bool(target_hash) and expected_old != target_hash
                 if new_job_missing_target or path_changed or content_changed:
                     return {
-                        "status": "legacy_target_changed",
-                        "message": "prepare 授权后的旧版笔记已发生变化；为避免把授权应用到不同内容，本次没有刷新。请重新 prepare 并再次确认迁移。",
-                        "note_path": str(path),
-                        "job_dir": str(job_dir),
+                        "status": "legacy_target_changed", "job_dir": str(job_dir),
+                        "note_path": str(path), "message": "已授权迁移的旧笔记发生变化，拒绝覆盖。",
                     }
-            legacy_authorized = replace_legacy or job_authorized
-            if not legacy_authorized:
+            if not (replace_legacy or job_authorized):
                 return {
-                    "status": "legacy_note_refresh_blocked",
-                    "message": "现有笔记来自旧版或缺少 managed marker。为避免覆盖人工编辑，本次没有刷新。",
-                    "note_path": str(path),
-                    "job_dir": str(job_dir),
-                    "next_action": "重新 prepare 并显式使用 --replace-legacy；兼容旧 job 时也可 finalize --replace-legacy。",
+                    "status": "legacy_note_refresh_blocked", "job_dir": str(job_dir),
+                    "note_path": str(path), "message": "旧笔记无 managed marker，必须显式授权迁移。",
                 }
             legacy_backup_path = job_dir / "legacy_note_backup.md"
             if legacy_backup_path.exists():
-                raise FileExistsError(f"legacy backup 已存在，拒绝覆盖：{legacy_backup_path}")
-            legacy_backup_path.write_text(existing, encoding="utf-8", newline="\n")
+                if legacy_backup_path.read_bytes() != old_bytes:
+                    raise PublishSafetyError("legacy_backup_conflict", "恢复发布时旧笔记备份与原文不同。")
+            else:
+                with legacy_backup_path.open("xb") as file:
+                    file.write(old_bytes)
+                    file.flush()
+                    os.fsync(file.fileno())
             preserved_tail = None
         else:
             preserved_tail = extract_preserved_tail(existing)
-        _write_note_atomic(path, render_with_first_image(preserved_tail=preserved_tail))
+        rendered = render_with_first_image(preserved_tail)
         action = "refreshed"
     else:
+        if (int(job.get("version") or 0) >= 8 and publish_mode == "upsert"
+                and job.get("target_note")):
+            return {"status": "note_target_missing", "job_dir": str(job_dir),
+                    "message": "prepare 时授权的目标笔记已消失，拒绝新建替代。"}
         force_new = publish_mode == "new"
         pending_root = settings.notes_root / "00-待整理"
         publish_name = str(repo["name"])
-        # Root-level historical notes keep their original paths. Avoid creating
-        # ambiguous same-name notes in the new pending folder when a root
-        # collision already exists; never rename or overwrite the old note.
         old_same_title = settings.notes_root / (safe_title(publish_name) + ".md")
         new_same_title = pending_root / (safe_title(publish_name) + ".md")
         if old_same_title.is_file() and not new_same_title.exists():
             if force_new and any(item == old_same_title for item in matches):
-                publish_name = publish_name + "（2）"
+                publish_name += "（2）"
             else:
-                publish_name = publish_name + " · " + owner
-        path = new_repository_note_path(
-            pending_root,
-            publish_name,
-            owner,
-            full_name,
-            force_new=force_new,
-        )
-        _write_note_atomic(path, render_with_first_image())
+                publish_name += " · " + owner
+        path = new_repository_note_path(pending_root, publish_name, owner, full_name, force_new=force_new)
+        # A different Agent may have published this identity after prepare.
+        if (int(job.get("version") or 0) >= 8 and publish_mode == "upsert"
+                and find_notes_by_repository(settings.notes_root, full_name)):
+            return {"status": "note_target_appeared", "job_dir": str(job_dir),
+                    "message": "准备分析后已出现该仓库的正式笔记，拒绝重复创建。"}
+        rendered = render_with_first_image()
         action = "created"
 
+    output = rendered.encode("utf-8")
     result: dict[str, Any] = {
         "status": "note_ready",
         "publish_action": action,
@@ -948,16 +1186,142 @@ def _publish_capture_note(
         "revision": str(job.get("revision") or ""),
         "packet_id": str(job.get("packet_id") or packet_id(full_name, str(job.get("revision") or ""))),
         "note_path": str(path),
+        "note_sha256": sha256(output),
         "runtime_status": "retained_for_audit",
         "job_dir": str(job_dir),
+        "analysis_status": "insufficient" if renderer is render_minimal_note else "sufficient",
     }
+    if renderer is render_minimal_note:
+        result["reason"] = str(analysis.get("source_notes") or "来源不足，已生成 Minimal Note。")
     if legacy_backup_path is not None:
         result["legacy_backup_path"] = str(legacy_backup_path)
     if first_image_result is not None:
         result["first_image_status"] = first_image_result["status"]
         if first_image_result.get("status") == "saved":
             result["first_image_source"] = first_image_result.get("repository_path") or ""
+
+    transaction = {
+        "version": 1,
+        "state": "prepared",
+        "repository": full_name,
+        "note_path": str(path),
+        "expected_old_sha256": expected_old,
+        "note_sha256": sha256(output),
+        "final_result": result,
+    }
+    tx_path = job_dir / "publish_transaction.json"
+    if tx_path.exists():
+        old_tx = _read_json(tx_path)
+        for key in ("repository", "note_path", "expected_old_sha256", "note_sha256"):
+            if old_tx.get(key) != transaction[key]:
+                raise PublishSafetyError("publish_transaction_conflict", "恢复事务与本次发布目标或内容不一致。")
+    json_atomic(tx_path, transaction)
+    _persist_job_state(job_dir, job, "publishing")
+    digest = publish_bytes(path, output, expected_old_sha=expected_old)
+    transaction["state"] = "written"
+    transaction["note_sha256"] = digest
+    json_atomic(tx_path, transaction)
     return result
+
+
+def _validated_cached_result(job_dir: Path, job: dict[str, Any]) -> dict[str, Any]:
+    result = job.get("final_result")
+    if not isinstance(result, dict):
+        return {"status": "published_result_missing", "job_dir": str(job_dir)}
+    path_text = str(result.get("note_path") or "")
+    if not path_text:
+        return {"status": "published_note_missing", "job_dir": str(job_dir)}
+    target = Path(path_text)
+    if not target.is_file():
+        return {"status": "published_note_missing", "note_path": path_text, "job_dir": str(job_dir)}
+    metadata = capture_metadata_from_file(target)
+    if (metadata.get("repo") or "").casefold() != str((job.get("repository") or {}).get("full_name") or "").casefold():
+        return {"status": "published_note_identity_changed", "note_path": path_text, "job_dir": str(job_dir)}
+    if metadata.get("packet_id") != str(job.get("packet_id") or ""):
+        return {"status": "published_note_identity_changed", "note_path": path_text, "job_dir": str(job_dir)}
+    expected = str(result.get("note_sha256") or "")
+    if expected and _file_sha256(target) != expected:
+        return {"status": "published_note_modified", "note_path": path_text, "job_dir": str(job_dir)}
+    return {**result, "idempotent": True, "verification": "sha256" if expected else "identity_only"}
+
+
+def _recover_publishing(settings: Settings, job_dir: Path, job: dict[str, Any]) -> dict[str, Any]:
+    tx_path = job_dir / "publish_transaction.json"
+    if not tx_path.is_file():
+        return {"status": "publish_interrupted", "job_dir": str(job_dir),
+                "message": "Job 处于 publishing 但缺少事务记录，必须人工检查。"}
+    tx = _read_json(tx_path)
+    if tx.get("repository") != str((job.get("repository") or {}).get("full_name") or ""):
+        return {"status": "publish_conflict", "job_dir": str(job_dir)}
+    target = Path(str(tx.get("note_path") or ""))
+    if not target.resolve().is_relative_to(settings.notes_root.resolve()):
+        return {"status": "publish_conflict", "job_dir": str(job_dir)}
+    expected = str(tx.get("note_sha256") or "")
+    if (target.is_file() and expected and _file_sha256(target) == expected
+            and capture_metadata_from_file(target).get("repo") == tx.get("repository")):
+        result = tx.get("final_result")
+        if not isinstance(result, dict) or result.get("note_path") != str(target):
+            return {"status": "publish_conflict", "job_dir": str(job_dir)}
+        tx["state"] = "written"
+        json_atomic(tx_path, tx)
+        _persist_job_state(job_dir, job, "published", published_at=_now(), final_result=result)
+        return {**result, "idempotent": True, "recovered": True}
+    old = tx.get("expected_old_sha256")
+    current = _file_sha256(target) if target.is_file() else None
+    if current == old:
+        # No published bytes yet. Keep the auditable record and retry only after
+        # the caller re-runs standard analysis/source checks.
+        _persist_job_state(job_dir, job, "analysis_complete")
+        return {"status": "publish_retry_ready", "job_dir": str(job_dir),
+                "message": "事务未写入目标，状态已恢复；请重新 finalize。"}
+    return {"status": "publish_conflict", "job_dir": str(job_dir),
+            "message": "中断后目标文件与事务预期不一致，拒绝覆盖。"}
+
+
+def _finalize_locked(settings: Settings, job_dir: Path, job: dict[str, Any],
+                     *, replace_legacy: bool) -> dict[str, Any]:
+    state = str(job.get("state") or "")
+    if state in {"published", "no_change"}:
+        return _validated_cached_result(job_dir, job)
+    if state == "publishing":
+        return _recover_publishing(settings, job_dir, job)
+    if state in {"collected", "packet_archived"}:
+        return resume_prepare(settings, job_dir)
+    if state not in {"analysis_required", "analysis_complete"}:
+        return {"status": "invalid_job_state", "state": state,
+                "job_dir": str(job_dir), "message": "此 Job 已终止或失败，不允许发布。"}
+
+    analysis = _read_json(job_dir / "analysis.json")
+    source_status = str(analysis.get("source_status") or "pending")
+    if source_status == "pending":
+        _persist_job_state(job_dir, job, "analysis_required")
+        return {"status": "analysis_required", "message": "Agent 尚未完成来源判断。",
+                "job_dir": str(job_dir), "packet_id": str(job.get("packet_id") or "")}
+    if source_status not in {"insufficient", "sufficient"}:
+        raise ValueError(f"不支持的 source_status：{source_status}")
+    if source_status == "sufficient":
+        _validate_analysis(job_dir, analysis)
+    else:
+        if not str(job.get("packet_id") or ""):
+            raise ValueError("Minimal Note 也必须拥有已归档的 Research Packet。")
+        if int(job.get("version") or 0) >= 8 and analysis.get("evidence_set_id") != job.get("evidence_set_id"):
+            raise ValueError("Minimal Note 的证据集身份不一致。")
+    _persist_job_state(job_dir, job, "analysis_complete")
+    return _finalize_publishing(settings, job_dir, job, analysis,
+                                replace_legacy=replace_legacy, source_status=source_status)
+
+
+def _finalize_publishing(settings: Settings, job_dir: Path, job: dict[str, Any],
+                         analysis: dict[str, Any], *, replace_legacy: bool,
+                         source_status: str) -> dict[str, Any]:
+    return_result = _publish_capture_note(
+        settings, job_dir, job, analysis,
+        renderer=render_note if source_status == "sufficient" else render_minimal_note,
+        replace_legacy=replace_legacy,
+    )
+    if return_result.get("status") == "note_ready":
+        _persist_job_state(job_dir, job, "published", published_at=_now(), final_result=return_result)
+    return return_result
 
 
 def finalize_job(settings: Settings, job_dir: Path, *, replace_legacy: bool = False) -> dict[str, Any]:
@@ -968,66 +1332,15 @@ def finalize_job(settings: Settings, job_dir: Path, *, replace_legacy: bool = Fa
     runtime_root = settings.runtime_root.resolve()
     if runtime_root not in job_dir.parents:
         raise ValueError("只允许 finalize 当前项目 .runtime/github-learning 下的 job。")
-
     job = _read_json(job_dir / "job.json")
     if int(job.get("version") or 0) < 6:
-        return {
-            "status": "legacy_job_restart_required",
-            "message": "v0.4 不直接 finalize 旧活动 Job；请重新 prepare --restart-job。已发布的旧笔记不受影响。",
-            "job_dir": str(job_dir),
-        }
-
-    state = str(job.get("state") or "")
-    if state in {"published", "no_change"}:
-        final_result = job.get("final_result")
-        if isinstance(final_result, dict):
-            return {**final_result, "idempotent": True}
-
-    if state in {"collected", "packet_archived"}:
-        return resume_prepare(settings, job_dir)
-
-    analysis = _read_json(job_dir / "analysis.json")
-    source_status = str(analysis.get("source_status") or "pending")
-    if source_status == "pending":
-        _persist_job_state(job_dir, job, "analysis_required")
-        return {
-            "status": "analysis_required",
-            "message": "Agent 尚未完成来源充分性判断。",
-            "job_dir": str(job_dir),
-            "packet_id": str(job.get("packet_id") or ""),
-        }
-
-    if source_status == "insufficient":
-        result = _publish_capture_note(
-            settings,
-            job_dir,
-            job,
-            analysis,
-            renderer=render_minimal_note,
-            replace_legacy=replace_legacy,
-        )
-        if result.get("status") == "note_ready":
-            result["analysis_status"] = "insufficient"
-            result["reason"] = str(
-                analysis.get("source_notes") or "仓库资料不足，已发布 Minimal Capture Note。"
-            )
-            _persist_job_state(job_dir, job, "published", published_at=_now(), final_result=result)
-        return result
-
-    if source_status != "sufficient":
-        raise ValueError(f"不支持的 source_status：{source_status}")
-
-    _validate_analysis(job_dir, analysis)
-    _persist_job_state(job_dir, job, "analysis_complete")
-    result = _publish_capture_note(
-        settings,
-        job_dir,
-        job,
-        analysis,
-        renderer=render_note,
-        replace_legacy=replace_legacy,
-    )
-    if result.get("status") == "note_ready":
-        result["analysis_status"] = "sufficient"
-        _persist_job_state(job_dir, job, "published", published_at=_now(), final_result=result)
-    return result
+        return {"status": "legacy_job_restart_required",
+                "message": "历史未完成 Job 不可直接 finalize，请明确重新准备。",
+                "job_dir": str(job_dir)}
+    repo = str((job.get("repository") or {}).get("full_name") or "")
+    if not repo:
+        raise ValueError("Job 缺少仓库身份。")
+    with repository_lock(settings.runtime_root, repo):
+        # Reload after taking the lock. Another Agent may have completed it.
+        job = _read_json(job_dir / "job.json")
+        return _finalize_locked(settings, job_dir, job, replace_legacy=replace_legacy)

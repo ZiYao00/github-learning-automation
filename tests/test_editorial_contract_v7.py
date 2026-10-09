@@ -4,6 +4,7 @@ import json
 import sys
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -11,7 +12,7 @@ sys.path.insert(0,str(ROOT/"src"))
 from github_learning.config import Settings
 from github_learning.github_client import SourceBundle,SourceDocument
 from github_learning.input_resolver import resolve_repository
-from github_learning.lifecycle import prepare_job,finalize_job,_validate_analysis
+from github_learning.lifecycle import prepare_job,finalize_job,_validate_analysis,_reuse_immutable_source_selection
 from github_learning.note_template import find_notes_by_repository, render_note
 
 
@@ -88,12 +89,27 @@ class EditorialV7Tests(unittest.TestCase):
         job=json.loads((self.job_dir/"job.json").read_text(encoding="utf-8"))
         analysis=json.loads((self.job_dir/"analysis.json").read_text(encoding="utf-8"))
         handoff=(self.job_dir/"agent_handoff.md").read_text(encoding="utf-8")
-        self.assertEqual(job["version"],7)
+        self.assertEqual(job["version"],8)
         self.assertEqual(job["editorial_contract_version"],"2.2")
         self.assertEqual(analysis["editorial_contract_version"],"2.2")
+        self.assertEqual(analysis["evidence_set_id"],job["evidence_set_id"])
         self.assertEqual(analysis["editorial_review"]["status"],"pending")
         self.assertIn("旧章节模板",handoff)
+        self.assertIn("Job v8",handoff)
+        self.assertIn("evidence_set_id",handoff)
         self.assertFalse(find_notes_by_repository(self.settings.notes_root,"editorial/demo"))
+
+    def test_existing_packet_reuses_pinned_original_sources_after_planner_upgrade(self):
+        old = bundle()
+        newly_selected = SourceDocument(
+            "CHATGPT_PROMPT.md", "prompt_document", "Use CodexPro.\n",
+            sha="b" * 40, size=len("Use CodexPro.\n"),
+        )
+        new_bundle = replace(old, sources=old.sources + (newly_selected,))
+        reconciled = _reuse_immutable_source_selection(self.settings, new_bundle)
+        self.assertEqual([s.path for s in reconciled.sources], [s.path for s in old.sources])
+        self.assertEqual(reconciled.revision, old.revision)
+        self.assertEqual(reconciled.readme, old.readme)
 
     def test_old_fields_cannot_bypass_v22(self):
         analysis=finish_analysis(self.job_dir)
@@ -123,6 +139,7 @@ class EditorialV7Tests(unittest.TestCase):
         self.assertEqual(path.parent,self.settings.notes_root/"00-待整理")
         note=path.read_text(encoding="utf-8")
         self.assertIn('editorial_contract_version: "2.2"',note)
+        self.assertIn("evidence_set_id:",note)
         self.assertIn('note_style: "natural-product-v2.2"',note)
         self.assertIn("## 我的记录",note)
         self.assertEqual(len(find_notes_by_repository(self.settings.notes_root,"editorial/demo")),1)
@@ -185,8 +202,7 @@ class EditorialV7Tests(unittest.TestCase):
         )
         finish_analysis(self.job_dir)
         result=finalize_job(self.settings,self.job_dir)
-        self.assertEqual(result["status"],"note_ready")
-        self.assertEqual(Path(result["note_path"]),old)
+        self.assertEqual(result["status"],"note_target_changed")
         self.assertIn("我的真实人工笔记必须保留。",old.read_text(encoding="utf-8"))
         self.assertFalse((self.settings.notes_root/"00-待整理"/"demo.md").exists())
 
