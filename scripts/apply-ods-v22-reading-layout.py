@@ -16,6 +16,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 from github_learning.config import load_settings
+from github_learning.style_sources import resolve_css_source
 
 PREVIEW = "ODS：把本地 AI 工具管起来（V2.2预览）.md"
 EXPECTED_OLD_PREVIEW = "b909538899aef11f85ceb9da9baf8e4233c1733043fcc53e670c143daed93b3c"
@@ -69,6 +70,7 @@ def main() -> None:
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--check", action="store_true")
     mode.add_argument("--apply", action="store_true")
+    parser.add_argument("--styles-root", type=Path, help="Shared CSS source checkout; otherwise OBSIDIAN_STYLES_ROOT")
     args = parser.parse_args()
 
     cfg = load_settings(ROOT)
@@ -86,7 +88,7 @@ def main() -> None:
     project_root = ROOT / "notes" / "github"
     project_old, project_new = project_root / "00-Inbox", project_root / "00-待整理"
     vault_old, vault_new = notes_root / "00-Inbox", notes_root / "00-待整理"
-    source_css = ROOT.parent / "obsidian-learning-snippets" / "snippets" / "github-note.css"
+    source_css = resolve_css_source(ROOT, "github-note.css", styles_root=args.styles_root)
     target_css = vault / ".obsidian" / "snippets" / "github-note.css"
     appearances = vault / ".obsidian" / "appearance.json"
     if not source_css.is_file() or not target_css.is_file():

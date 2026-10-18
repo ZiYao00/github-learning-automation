@@ -103,9 +103,9 @@ v0.4.x 默认不做：
 
 - 按需插入 `> [!gh-source]` 或 `~~~prompt`；前者只呈现 pinned 原文（附译文需清楚标示），后者只展示已核实完整的作者原始 Prompt，并使用 Obsidian 原生 Copy Code。详情见 `docs/NOTE-SPEC.md`。不要修改 `x-case-note.css` 或 X 的数据模型。
 
-- 权威 CSS 文件：`../obsidian-learning-snippets/snippets/github-note.css` v0.4；消费者不要另存可编辑 CSS 副本。仅 GitHub Note Extension 变化；共享 Core 和 X-case CSS 不动。
-- 基于 Chrome 的 10 场景静态 QA（原 ODS/旧笔记六组 + ODS pinned 原文引用、真实 Seedance 导演 Skill Prompt 各两组）：`py -3.12 ../obsidian-learning-snippets/scripts/qa_github_note_reading.py`。脚本使用 ODS Golden Sample 和一篇旧式 `bili-learning-automation` 笔记，覆盖亮/暗、宽/窄，核对 H1 > H2、单图、无横向溢出与不覆盖阅读宽度。其输出是**模拟 Obsidian 的样式 DOM**，并非真实 Obsidian 客户端截图。
-- 当前本机直连 Vault 的一次性受控单 CSS 同步：`py -3.12 scripts/sync_github_note_editorial_css.py --check` 后运行 `--apply`。仅允许从已验证的 v0.3 哈希升级至 v0.4 共享 CSS 真源；会备份原文件并检查三个其它 snippet 的 SHA-256。以后升级不得直接复用脚本中的旧版哈希基线而跳过检查。
+- 权威 CSS 文件：共享仓库 `manifest.json` 中声明的 `snippets/github-note.css` v0.4；消费者不保存可编辑副本。需要源码的专项维护脚本使用 `--styles-root` 或 `OBSIDIAN_STYLES_ROOT`，不再依赖固定同级目录。共享 Core 和 X-case CSS 不动。
+- 基于 Chrome 的 10 场景静态 QA（原 ODS/旧笔记六组 + ODS pinned 原文引用、真实 Seedance 导演 Skill Prompt 各两组）：在共享样式仓库中运行 `py -3.12 scripts/qa_github_note_reading.py --github-root "<GitHub 项目目录>" --seedance-root "<Seedance Skill 目录>"`。脚本使用 ODS Golden Sample 和一篇旧式 `bili-learning-automation` 笔记，覆盖亮/暗、宽/窄，核对 H1 > H2、单图、无横向溢出与不覆盖阅读宽度。其输出是**模拟 Obsidian 的样式 DOM**，并非真实 Obsidian 客户端截图。
+- 历史一次性 CSS 升级脚本通过 `--styles-root "<共享仓库目录>"` 或 `OBSIDIAN_STYLES_ROOT` 获取源码，不再假定项目相邻。先执行 `--check`，旧版 v0.3 哈希限制仍有效；今后常规 CSS 升级以共享仓库的 `scripts/sync-snippets.ps1 -Check/-Apply` 为准，并确保个人 CSS 不被覆盖。
 - 双组件的独立本地预览可由 `py -3.12 scripts/publish_github_v04_style_preview.py --check` 预检查，然后 `--apply` 创建到 `GitHub-Note/00-待整理/【视觉验收】GitHub Note v0.4 原文与Prompt（可删除）.md`。只引用固定 ODS README 与真实 Seedance Director 仓库的本地来源；不生成第二份正式 Capture Note。已有同名但内容不同的文件会拒绝覆盖。验收后可以人工删除这一个预览文件。
 - 打开 Vault 中的 ODS、v0.4 临时预览和旧版 GitHub Note，用用户当前 Obsidian 主题、阅读宽度插件与 Live Preview 检查真实表现；原生复制按钮应能复制完整 Prompt（Chrome 静态 QA 不能验证剪贴板）。无法进入 GUI 时，应如实标记“客户端视觉验收待确认”。关闭 `github-note.css` 应只撤销视觉增强，不影响笔记内容/图片路径。
 

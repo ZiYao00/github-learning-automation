@@ -18,9 +18,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 from github_learning.config import load_settings
+from github_learning.style_sources import resolve_css_source
 
 BASELINE_V03_HASH = "159bd26087a731b1a69eaf057fe19ead5b675d8280f3011d959d517f282dd433"
-OTHER_SNIPPETS = ("learning-lab.css", "video-note.css", "x-case-note.css")
 
 
 def sha(content: bytes) -> str:
@@ -36,6 +36,7 @@ def main() -> int:
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--check", action="store_true")
     mode.add_argument("--apply", action="store_true")
+    parser.add_argument("--styles-root", type=Path, help="Shared CSS source checkout; otherwise OBSIDIAN_STYLES_ROOT")
     args = parser.parse_args()
 
     settings = load_settings(ROOT)
@@ -43,7 +44,7 @@ def main() -> int:
     if not vault or str(settings.notes_subdir).replace("\\", "/") != "GitHub-Note":
         raise RuntimeError("This controlled update requires the confirmed GitHub-Note Vault mapping")
     installed_dir = vault / ".obsidian" / "snippets"
-    source_file = ROOT.parent / "obsidian-learning-snippets" / "snippets" / "github-note.css"
+    source_file = resolve_css_source(ROOT, "github-note.css", styles_root=args.styles_root)
     installed_file = installed_dir / "github-note.css"
     appearance_file = vault / ".obsidian" / "appearance.json"
     if not source_file.is_file() or not installed_file.is_file() or not appearance_file.is_file():
@@ -60,7 +61,7 @@ def main() -> int:
         raise RuntimeError("Canonical CSS is not the expected scoped v0.4 extension")
     if existing_hash not in {BASELINE_V03_HASH, source_hash}:
         raise RuntimeError(f"Installed CSS has unknown modifications (SHA256={existing_hash}); no update")
-    other_before = {name: hash_file(installed_dir / name) for name in OTHER_SNIPPETS}
+    other_before = {path.name: hash_file(path) for path in installed_dir.glob("*.css") if path.name != "github-note.css"}
     if any(value is None for value in other_before.values()):
         raise RuntimeError("Expected shared CSS snippets are missing; no update")
 
@@ -102,7 +103,7 @@ def main() -> int:
 
     if hash_file(installed_file) != source_hash:
         raise RuntimeError("Installed CSS mismatch after sync; backup available for recovery")
-    other_after = {name: hash_file(installed_dir / name) for name in OTHER_SNIPPETS}
+    other_after = {path.name: hash_file(path) for path in installed_dir.glob("*.css") if path.name != "github-note.css"}
     if other_before != other_after:
         raise RuntimeError("Unrelated snippet changed during sync")
     print(json.dumps({

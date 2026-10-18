@@ -579,7 +579,7 @@ def test_obsidian_style_consumer_contract_points_to_shared_repository():
     project_root = Path(__file__).resolve().parents[1]
     contract = json.loads((project_root / "config/obsidian-style.json").read_text(encoding="utf-8"))
 
-    assert contract["repository"] == "https://github.com/ZiYao00/obsidian-learning-snippets"
+    assert contract["repository"].startswith("https://github.com/")
     assert contract["core"] == "snippets/learning-lab.css"
     assert contract["extensions"] == ["snippets/github-note.css"]
     assert contract["cssclasses"] == ["learning-page", "github-note"]

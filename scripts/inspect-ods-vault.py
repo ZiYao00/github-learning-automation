@@ -2,6 +2,7 @@
 Does not read personal note bodies or modify the Vault.
 """
 from __future__ import annotations
+import argparse
 import hashlib
 import json
 import sys
@@ -10,9 +11,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 from github_learning.config import load_settings
+from github_learning.style_sources import resolve_css_source
 
-def digest(p: Path) -> str | None:
-    if not p.is_file():
+def digest(p: Path | None) -> str | None:
+    if p is None or not p.is_file():
         return None
     return hashlib.sha256(p.read_bytes()).hexdigest()
 
@@ -24,6 +26,9 @@ def folder(p: Path) -> dict:
     }
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--styles-root", type=Path, help="Shared CSS source checkout; otherwise OBSIDIAN_STYLES_ROOT")
+    args = parser.parse_args()
     cfg = load_settings(ROOT)
     if not cfg.vault_root:
         raise SystemExit("Vault is unconfigured")
@@ -31,7 +36,7 @@ def main():
     vault = cfg.vault_root
     if not (vault / ".obsidian").is_dir():
         raise SystemExit("Not an Obsidian Vault")
-    css_source = ROOT.parent / "obsidian-learning-snippets" / "snippets" / "github-note.css"
+    css_source = resolve_css_source(ROOT, "github-note.css", styles_root=args.styles_root, optional=True)
     css_installed = vault / ".obsidian" / "snippets" / "github-note.css"
     snippets = []
     for p in [vault / ".obsidian" / "appearance.json",vault / ".obsidian" / "app.json"]:
@@ -52,6 +57,7 @@ def main():
         "vault_new":digest(notes_root/"00-待整理"/title),
       },
       "css_source_hash":digest(css_source),
+      "css_source_configured":css_source is not None,
       "css_installed_hash":digest(css_installed),
       "css_enabled": snippets,
     },ensure_ascii=False,indent=2))
