@@ -271,10 +271,28 @@ def archive_runtime_packet(research_root: Path, job_dir: Path) -> dict[str, Any]
     if target.exists():
         existing = validate_packet(target)
         if str(existing.get("content_fingerprint") or "") != fingerprint:
-            raise ResearchPacketError(
-                "packet_conflict",
-                f"同一 repo@revision 已存在不同内容的 Research Packet，拒绝覆盖：{target}",
-            )
+            # Older and newer collectors may serialize identical JSON with a
+            # different whitespace/key order. The immutable Packet's *bytes*
+            # remain authoritative, so recalculate using its verified core
+            # only after checking that all parsed values match the new job.
+            old_core = [(target / name).read_bytes()
+                        for name in ("repository.json", "tree-index.json", "media-index.json")]
+            try:
+                same_core = all(
+                    json.loads(now.decode("utf-8")) == json.loads(was.decode("utf-8"))
+                    for now, was in zip((repository_bytes, tree_bytes, media_bytes), old_core)
+                )
+            except (ValueError, UnicodeError):
+                same_core = False
+            if same_core:
+                canonical_fingerprint = _content_fingerprint(job, manifest, *old_core)
+                if canonical_fingerprint == str(existing.get("content_fingerprint") or ""):
+                    fingerprint = canonical_fingerprint
+            if str(existing.get("content_fingerprint") or "") != fingerprint:
+                raise ResearchPacketError(
+                    "packet_conflict",
+                    f"同一 repo@revision 已存在不同内容的 Research Packet，拒绝覆盖：{target}",
+                )
         observation_result = _archive_observation(research_root, job, job_dir / "observation.json")
         return {
             "status": "packet_reused",

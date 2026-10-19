@@ -1,10 +1,12 @@
 {
+  "catalog_contract_version": 1,
   "css_extension_version": "0.4",
   "editorial_contract_version": "2.2",
   "new_job_version": 8,
   "references": {
     "NOTE-SPEC.md": "29cb7100836e73b04b4f2cd81d71a39e539623914dad9db033fce540c532b292",
-    "ODS-V2.2-GOLDEN.md": "b9bbe80f517f1931049c9a7f9420ca00dceed66d1c9c8225ba490957bb674b2d"
+    "ODS-V2.2-GOLDEN.md": "b9bbe80f517f1931049c9a7f9420ca00dceed66d1c9c8225ba490957bb674b2d",
+    "REPO-CATALOG.md": "ce845fe9527e067d43134d7934ce6f3dd2bdcab8b24faaae4abf0957626e20c1"
   },
-  "skill_version": "2.3.0"
+  "skill_version": "2.4.0"
 }

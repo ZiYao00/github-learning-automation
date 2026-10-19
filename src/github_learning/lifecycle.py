@@ -36,7 +36,7 @@ _ACTIVE_JOB_STATES = {"collected", "packet_archived", "analysis_required", "anal
 # Legacy v6 jobs keep their existing resume/finalize behavior.
 CURRENT_JOB_VERSION = 8
 EDITORIAL_CONTRACT_VERSION = "2.2"
-WORKFLOW_SKILL_VERSION = "2.3.0"
+WORKFLOW_SKILL_VERSION = "2.4.0"
 
 
 def _file_sha256(path: Path) -> str:

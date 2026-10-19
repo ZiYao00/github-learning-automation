@@ -56,6 +56,27 @@ Before confirmation, prepare returns `onboarding_required`, not a silent fallbac
 
 Without authentication, use gh auth login, or explicitly choose --allow-anonymous for a prepare.
 
+## 2A. Lightweight catalog instead of immediate research
+
+For save-for-later requests, use the existing confirmed note storage without collecting repository sources:
+
+~~~powershell
+python scripts/github_learning.py catalog list --summary
+python scripts/github_learning.py catalog add owner/repo --description "初步判断：收藏原因，待研究。" --priority 高
+python scripts/github_learning.py catalog nav
+~~~
+
+The first `add` can create a missing catalog; `list` never creates one. No network or model API is called by catalog commands. For batches, supply a UTF-8 JSON array through `--input-file`; a partial result returns exit code 2 with per-item outcomes. Only confirmed notes storage is required for saving; a GitHub authentication recommendation does not block local catalog work. Navigation/reconcile writes additionally require a valid Vault mapping.
+
+After successful formal CLI publication, inspect optional `catalog_sync` independently from the primary `note_ready/no_change` result. If index synchronization fails, keep the published note and recover without recollection:
+
+~~~powershell
+python scripts/github_learning.py catalog reconcile --dry-run
+python scripts/github_learning.py catalog reconcile
+~~~
+
+Only sufficient, structurally valid, unique Capture Notes justify completion. Minimal Notes remain unchecked, historical/duplicate notes need review, and existing manual defer/tested decisions remain protected. Do not edit task boxes in generated navigation to launch research. Contract and concurrency details: `docs/REPO-CATALOG.md`.
+
 ## 3. Prepare
 
 ~~~powershell

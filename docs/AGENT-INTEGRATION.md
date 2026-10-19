@@ -2,7 +2,15 @@
 
 本项目的业务真源是 Python 核心与 `skill/github-note/SKILL.md`。ChatGPT、Codex、Claude、WorkBuddy 使用同一 Control Plane，不复制独立业务流程。
 
-## 统一流程
+## 先区分轻量收藏与正式研究
+
+用户要求「先收藏／加入待研究／以后再看」时，按 `docs/REPO-CATALOG.md` 使用 `catalog add/list/nav`，不进入 Collector。简介由当前 Agent 依据已有材料提供，CLI 只做本地规范化、去重与安全写入。用户明确选择仓库正式研究时，才使用下方统一流程；不因打开项目而研究整个列表。
+
+已有清单时，正式 CLI 在 `note_ready/no_change` 后独立执行索引同步；外部直接调用 `finalize_job` 则需自行使用 `postprocess_catalog` 或 `catalog reconcile`。检查 `catalog_sync.index_sync_success`，索引失败不改变正式发布状态和退出码，也不触发重新采集。详情和恢复边界以 Catalog 说明为准。
+
+Skill 2.4.0 分发新增 `references/REPO-CATALOG.md`，`contract.json` 增加 `catalog_contract_version=1`；原 Job v8、编辑契约 2.2 保持不变。
+
+## 正式研究统一流程
 
 1. 首次运行 `onboarding`。未确认本机存储时返回 `action_required`；用户可以显式接受项目默认 `notes/github + research/github`，也可以配置自定义路径。
 2. 存储确认后运行 `doctor`，检查 notes/research 解析结果、Vault 映射和 GitHub 认证。

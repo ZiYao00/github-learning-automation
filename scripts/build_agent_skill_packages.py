@@ -1,7 +1,7 @@
 """Build host-neutral GitHub Note Skills and a self-contained ZIP.
 
-Only skill/github-note/SKILL.md is hand-edited; the two supporting references
-are copied from docs/NOTE-SPEC.md and the approved ODS Golden Sample.
+Only skill/github-note/SKILL.md is hand-edited; supporting references are copied
+from the catalog contract, docs/NOTE-SPEC.md and the approved ODS Golden Sample.
 Generated copies under skill/, github-note/, agent-skills/ and release/ are
 derived data. --check validates content and the actual ZIP payload.
 """
@@ -18,6 +18,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 from github_learning.lifecycle import EDITORIAL_CONTRACT_VERSION, CURRENT_JOB_VERSION, WORKFLOW_SKILL_VERSION
+from github_learning.catalog import CATALOG_CONTRACT_VERSION
 
 SOURCE = PROJECT_ROOT / "skill" / "github-note"
 OUTPUTS = [
@@ -28,6 +29,7 @@ OUTPUTS = [
     PROJECT_ROOT / "agent-skills" / "workbuddy" / "github-note",
 ]
 REFERENCE_INPUTS = {
+    "REPO-CATALOG.md": PROJECT_ROOT / "docs" / "REPO-CATALOG.md",
     "NOTE-SPEC.md": PROJECT_ROOT / "docs" / "NOTE-SPEC.md",
     "ODS-V2.2-GOLDEN.md": PROJECT_ROOT / "docs" / "ODS-NATURAL-PRODUCT-V2.2-REFERENCE.md",
 }
@@ -49,6 +51,7 @@ def package_files() -> dict[str, bytes]:
         contents["references/" + name] = path.read_bytes()
     policy = {
         "skill_version": SKILL_VERSION,
+        "catalog_contract_version": CATALOG_CONTRACT_VERSION,
         "editorial_contract_version": EDITORIAL_CONTRACT_VERSION,
         "new_job_version": CURRENT_JOB_VERSION,
         "css_extension_version": CSS_VERSION,

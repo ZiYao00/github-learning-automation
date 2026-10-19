@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import Any
 
 from .auth import probe_rate_limit, resolve_github_auth
+from .catalog import CATALOG_CONTRACT_VERSION, CatalogError, add_catalog
+from .catalog_nav import inspect_catalog, navigation, postprocess_catalog, reconcile
 from .config import ConfigurationError, configure_defaults, configure_notes, load_settings
 from .github_client import GitHubFetchError, fetch_repository_sources
 from .input_resolver import resolve_repository
@@ -168,6 +170,7 @@ def _doctor_payload(settings, *, check_api: bool = False) -> dict[str, Any]:
     payload["editorial_contract_version"] = EDITORIAL_CONTRACT_VERSION
     payload["new_job_version"] = CURRENT_JOB_VERSION
     payload["workflow_skill_version"] = WORKFLOW_SKILL_VERSION
+    payload["catalog_contract_version"] = CATALOG_CONTRACT_VERSION
     if check_api:
         payload["github_api"] = probe_rate_limit(resolve_github_auth())
     return payload
@@ -204,10 +207,50 @@ def _workflow_exit_code(command: str, payload: dict[str, Any]) -> int:
     return 0 if payload.get("status") in _COMPLETED_STATUSES.get(command, set()) else 2
 
 
+def _catalog_payload(settings, args) -> dict[str, Any]:
+    if args.catalog_command == "add":
+        inputs = list(args.repositories)
+        if args.input_file is not None:
+            payload = json.loads(args.input_file.read_text(encoding="utf-8-sig"))
+            if not isinstance(payload, list):
+                raise CatalogError("catalog_input_invalid", "批量文件必须是 UTF-8 JSON 数组。")
+            inputs.extend(payload)
+        return add_catalog(settings, inputs, description=args.description, priority=args.priority,
+                           source=args.source, dry_run=args.dry_run, expected_sha=args.expected_sha)
+    if args.catalog_command == "list":
+        payload = inspect_catalog(settings)
+        if args.summary:
+            return {k: payload[k] for k in ("status", "catalog_sha256", "counts", "recorded_states",
+                                            "mapping", "can_write", "diagnostics", "network_used")}
+        return payload
+    operation = reconcile if args.catalog_command == "reconcile" else navigation
+    return operation(settings, dry_run=args.dry_run, expected_sha=args.expected_sha,
+                     expected_nav_sha=args.expected_nav_sha)
+
+
 def main() -> int:
     _configure_stdio()
     parser = argparse.ArgumentParser(prog="github-learning", description="GitHub 仓库长期收藏与学习笔记")
     sub = parser.add_subparsers(dest="command", required=True)
+
+    p_catalog = sub.add_parser("catalog", help="本地轻量收藏、状态核验与 Obsidian 导航，不触发正式采集")
+    catalog_sub = p_catalog.add_subparsers(dest="catalog_command", required=True)
+    p_add = catalog_sub.add_parser("add", help="逐项去重收藏；不会访问网络或核验仓库公开性")
+    p_add.add_argument("repositories", nargs="*")
+    p_add.add_argument("--input-file", type=Path, help="UTF-8 JSON 数组：字符串或 repository/description/priority/source 对象")
+    p_add.add_argument("--description", default="待研究：仅记录链接，尚未核验仓库内容。")
+    p_add.add_argument("--priority", choices=("高", "中", "低"), default="中")
+    p_add.add_argument("--source", default="", help="发现来源，由用户或 Agent 提供，不代表已经实测")
+    p_add.add_argument("--dry-run", action="store_true")
+    p_add.add_argument("--expected-sha", help="已审阅清单 SHA；不存在时可用 absent")
+    p_list = catalog_sub.add_parser("list", help="只读查看人工收藏状态与已核验归档事实")
+    p_list.add_argument("--summary", action="store_true", help="只显示计数、映射和异常")
+    p_nav = catalog_sub.add_parser("nav", help="预览或重建派生导航，不回写收藏主表")
+    p_reconcile = catalog_sub.add_parser("reconcile", help="从真实正式笔记核验并同步清单及导航；失败可独立恢复")
+    for p_view in (p_nav, p_reconcile):
+        p_view.add_argument("--dry-run", action="store_true")
+        p_view.add_argument("--expected-sha", help="已审阅清单 SHA")
+        p_view.add_argument("--expected-nav-sha", help="已审阅导航 SHA；首次写入用 absent")
 
     p_prepare = sub.add_parser("prepare", help="采集 GitHub 仓库资料、归档 Research Packet 并创建 Agent 分析任务")
     p_prepare.add_argument("repository")
@@ -298,6 +341,11 @@ def main() -> int:
 
         settings = load_settings(root)
 
+        if args.command == "catalog":
+            payload = _catalog_payload(settings, args)
+            _print(payload)
+            return 2 if payload["status"] in {"catalog_partial", "index_sync_failed"} else 0
+
         if args.command == "onboarding":
             _print(_onboarding_payload(settings))
             return 0
@@ -337,7 +385,7 @@ def main() -> int:
             )
             if preflight["status"] == "in_progress":
                 result = resume_prepare(settings, Path(str(preflight["job_dir"])))
-                _print(result)
+                _print(postprocess_catalog(settings, result))
                 return _workflow_exit_code("prepare", result)
             if preflight["status"] != "ready":
                 _print(preflight)
@@ -359,7 +407,7 @@ def main() -> int:
                 restart_job=args.restart_job,
                 refresh_evidence=args.refresh_evidence,
             )
-            _print(result)
+            _print(postprocess_catalog(settings, result))
             return _workflow_exit_code("prepare", result)
 
         if args.command == "finalize":
@@ -367,9 +415,12 @@ def main() -> int:
                 _print(_onboarding_required(settings))
                 return 2
             result = finalize_job(settings, Path(args.job_dir), replace_legacy=args.replace_legacy)
-            _print(result)
+            _print(postprocess_catalog(settings, result))
             return _workflow_exit_code("finalize", result)
 
+    except CatalogError as exc:
+        _print({"status": exc.code, "error": str(exc), "line": exc.line})
+        return 2
     except GitHubFetchError as exc:
         _print({"status": exc.code, "error": str(exc), "http_status": exc.status})
         return 2

@@ -21,9 +21,12 @@ SPEC.loader.exec_module(build)
 class SkillDistributionTests(unittest.TestCase):
     def test_reference_resources_and_contract(self):
         package=build.package_files()
-        self.assertEqual(len(package),5)
+        self.assertEqual(len(package),6)
+        self.assertIn("references/REPO-CATALOG.md", package)
         policy=json.loads(package["references/contract.json"].decode("utf-8"))
         self.assertEqual(policy["editorial_contract_version"],EDITORIAL_CONTRACT_VERSION)
+        self.assertEqual(policy["skill_version"], "2.4.0")
+        self.assertEqual(policy["catalog_contract_version"], 1)
         self.assertEqual(CURRENT_JOB_VERSION,8)
         self.assertEqual(policy["new_job_version"],CURRENT_JOB_VERSION)
         self.assertEqual(policy["css_extension_version"],"0.4")
