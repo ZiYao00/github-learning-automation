@@ -2,6 +2,9 @@
 
 ## Unreleased · Natural Product V2.2 pilot
 
+- Close out shared-pytest regression: update legacy test fixtures for Job v8/V2.2 and evidence-set identity, and align Source Planner tests with prioritized prompt documents. Full suite: 171 passed, 72 subtests passed.
+- Preserve the documented `legacy_target_changed` blocker for authorized legacy migration under the v8 prepublication SHA guard, without changing standard `note_target_changed` behavior; repair touched-file Ruff import warnings.
+
 - Correct CLI exit codes: blocked and error statuses now exit nonzero rather than reporting false shell success; add network-free regression coverage.
 - Fix generated v8 Agent handoff text to reference current Job version and evidence_set_id, with compatibility regression checks.
 - Verify a real pinned `psf/requests` repository end-to-end with isolated Job v8 storage, leaving the actual Obsidian Vault and target repository code untouched.

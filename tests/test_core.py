@@ -278,6 +278,37 @@ def _valid_analysis(summary: str = "用于演示。") -> dict:
     }
 
 
+def _valid_prepared_v8_analysis(job_dir: Path, summary: str) -> dict:
+    """Use the prepared Job's evidence identity while filling the current V2.2 contract."""
+    analysis = json.loads((job_dir / "analysis.json").read_text(encoding="utf-8"))
+    evidence_map = analysis.get("evidence_map", [])
+    analysis.update(_valid_analysis(summary))
+    analysis.update({
+        "editorial_contract_version": "2.2",
+        "editorial_headline": "合成仓库：验证旧笔记迁移的修改保护",
+        "editorial_body": (
+            "这是一项旧笔记迁移安全性的合成回归测试，不代表真实 GitHub 仓库功能。"
+            "测试先在临时目录中建立旧格式笔记，再通过准备阶段授权迁移。"
+            "为了走到目标文件一致性检查，分析字段遵守当前 Job v8 和 V2.2 契约。"
+            "即使迁移已经获得授权，目标笔记在准备完成后被用户修改时也不能覆盖原文。"
+            "正确结果是报告目标变化，同时保留修改后的文件且不创建迁移备份。\n\n"
+        ) * 3,
+        "editorial_review": {
+            "status": "passed",
+            "repository_type_rationale": "这是生命周期测试使用的合成仓库，不归类为已经部署的软件。",
+            "official_highlights": "模拟 README 只有基本标题，因此不声称存在真实功能亮点。",
+            "claims_and_limits": "所有行为都发生在隔离的临时目录，不能推断目标仓库已经安装。",
+            "source_traceability": "测试范围仅涉及合成 README 和准备阶段产生的来源记录。",
+            "readability": "正文直接说明迁移目标保护目的、操作边界和预期阻断行为。",
+        },
+    })
+    analysis["evidence_map"] = [
+        {**source, "status": "represented", "targets": ["editorial_body"], "reason": ""}
+        for source in evidence_map
+    ]
+    return analysis
+
+
 def test_render_note_uses_local_collection_date_and_conflict_callout():
     job = _valid_job()
     analysis = _valid_analysis()
@@ -529,7 +560,9 @@ def test_prepare_records_legacy_authorization_in_job(tmp_path: Path):
     job = json.loads((Path(result["job_dir"]) / "job.json").read_text(encoding="utf-8"))
 
     assert result["status"] == "analysis_required"
-    assert job["version"] == 6
+    assert job["version"] == 8
+    assert job["editorial_contract_version"] == "2.2"
+    assert len(job["evidence_set_id"]) == 64
     assert job["publish_operation"] == "replace_legacy"
     assert job["replace_legacy_authorized"] is True
     assert job["target_note"].endswith("demo.md")
@@ -557,7 +590,8 @@ def test_authorized_legacy_refresh_rejects_target_changed_after_prepare(tmp_path
 
     prepared = prepare_job(settings, resolved, bundle, replace_legacy=True)
     job_dir = Path(prepared["job_dir"])
-    (job_dir / "analysis.json").write_text(json.dumps(_valid_analysis("新摘要"), ensure_ascii=False), encoding="utf-8")
+    analysis = _valid_prepared_v8_analysis(job_dir, "新摘要")
+    (job_dir / "analysis.json").write_text(json.dumps(analysis, ensure_ascii=False), encoding="utf-8")
     changed_text = '---\nrepo: "owner/demo"\n---\n\n# demo\n\nchanged after authorization\n'
     legacy.write_text(changed_text, encoding="utf-8")
 

@@ -15,9 +15,21 @@ from typing import Any
 from urllib.parse import quote
 
 from .catalog import (
-    CATALOG_NAME, NAV_NAME, PRIORITIES, STATES, CatalogDocument, CatalogError,
-    catalog_lock, checked_path, commit_bytes, normalize_repository, read_document,
-    require_expected, sha256, text_cell, unified_diff,
+    CATALOG_NAME,
+    NAV_NAME,
+    PRIORITIES,
+    STATES,
+    CatalogDocument,
+    CatalogError,
+    catalog_lock,
+    checked_path,
+    commit_bytes,
+    normalize_repository,
+    read_document,
+    require_expected,
+    sha256,
+    text_cell,
+    unified_diff,
 )
 from .config import Settings
 from .note_template import MANAGED_END, MANAGED_START

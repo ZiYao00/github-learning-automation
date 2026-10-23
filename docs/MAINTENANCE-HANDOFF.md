@@ -79,6 +79,14 @@ v0.4.x 默认不做：
 - 真实 Job 的 `agent_handoff.md` 必须随 `CURRENT_JOB_VERSION` 输出 v8，而不能沿用固定“新 Job v7”。回归检查位于 `tests/test_editorial_contract_v7.py`（文件名历史保留）。
 - 完整 `pytest` 与 `ruff` 依赖来自 `pyproject.toml` 的可选开发组。本机 Python 3.12 若未安装，必须明确标为“尚未验证”；不未经授权全局安装或擅自宣称 CI 全通过。提交前仅精确暂存仓库代码、规范和测试，`temp/`、本地配置、`.runtime` 和 Research / Vault 数据必须排除。
 
+### 2026-10-24 · 质量回归收尾
+
+- 已授权的 Windows 公共开发环境（项目父目录的 `.tools-venv`）提供 Python 3.12.10、pytest 9.1.1、Ruff 0.16.3；在**本仓库根目录**运行 `..\.tools-venv\Scripts\python.exe -B -m pytest -q -p no:cacheprovider`：**171 passed、72 subtests passed、0 failed**。原先 4 项失败来自 v6 测试预期、缺失 v8 / V2.2 校验字段与旧 Source Planner 优先级断言，现已更正测试夹具。
+- v8 的提前 SHA 目标检查对已授权的旧笔记迁移继续返回文档约定的 `legacy_target_changed`，普通刷新仍返回 `note_target_changed`；两者都拒绝覆盖，测试覆盖两种情况。
+- 本轮涉及的 `src/github_learning/catalog_nav.py`、`src/github_learning/lifecycle.py`、`tests/test_catalog.py`、`tests/test_core.py`、`tests/test_v030.py` 已通过共享 Ruff 定向检查；**整仓 `ruff check .` 尚有 164 项此前积累的脚本/测试风格问题**，不属于本轮覆盖的 6 项导入告警，应另开代码风格专项整治，避免在安全与兼容修复时批量改写无关脚本或用全局忽略掩盖。
+- `scripts/build_agent_skill_packages.py --check` 已核验分发包一致性；`scripts/github_learning.py doctor` 返回 `ready=true`。以上是本机验证，不代表 GitHub Actions 或 Obsidian GUI 已人工验收。
+- 不纳入提交：用户已有未跟踪的 `temp/run-obsidian-snippets-migration.cmd`、本机 `config/local.json`、`.runtime`、Research Packet、Vault 笔记；不自动清理。
+
 ## 修改前检查
 
 1. 阅读 `AGENTS.md`。

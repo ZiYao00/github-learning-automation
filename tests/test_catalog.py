@@ -12,16 +12,25 @@ from pathlib import Path
 from unittest.mock import patch
 from urllib.parse import unquote
 
+# Keep stdlib unittest discovery runnable without installing the project.
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from github_learning.catalog import (
-    CATALOG_NAME, DEFAULT_CATALOG, NAV_NAME, CatalogDocument, CatalogError,
-    add_catalog, normalize_repository, read_document, sha256, table_cells,
+from github_learning.catalog import (  # noqa: E402
+    CATALOG_NAME,
+    DEFAULT_CATALOG,
+    NAV_NAME,
+    CatalogDocument,
+    CatalogError,
+    add_catalog,
+    normalize_repository,
+    read_document,
+    sha256,
+    table_cells,
 )
-from github_learning.catalog_nav import inspect_catalog, navigation, note_link, scan_notes
-from github_learning.config import Settings
-from github_learning.note_template import MANAGED_END, MANAGED_START
+from github_learning.catalog_nav import inspect_catalog, navigation, note_link, scan_notes  # noqa: E402
+from github_learning.config import Settings  # noqa: E402
+from github_learning.note_template import MANAGED_END, MANAGED_START  # noqa: E402
 
 
 def sample_catalog(count: int = 34, *, crlf: bool = False, bom: bool = False) -> bytes:

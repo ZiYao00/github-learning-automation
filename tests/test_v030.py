@@ -111,10 +111,11 @@ def test_source_planner_collects_skill_universal_and_reference_bundle():
         "SKILL.md",
         "UNIVERSAL.md",
         "references/01-mode-overview.md",
+        "assets/prompt-recipes.md",
         "references/02-open-window.md",
-        "references/08-traffic-matrix.md",
     ]
-    assert "assets/prompt-recipes.md" not in paths
+    assert "references/08-traffic-matrix.md" in paths
+    assert next(item for item in plan if item.path == "assets/prompt-recipes.md").kind == "prompt_document"
 
 
 def test_source_planner_uses_readme_links_and_ignores_vendor_noise():
@@ -275,7 +276,10 @@ def test_finalize_is_idempotent_after_publish(tmp_path: Path):
     )
     prepared = prepare_job(settings, resolved, bundle)
     job_dir = Path(prepared["job_dir"])
-    (job_dir / "analysis.json").write_text(json.dumps(_analysis(), ensure_ascii=False), encoding="utf-8")
+    # Keep evidence_set_id and supplemental identity from the prepared v8 analysis.
+    analysis = json.loads((job_dir / "analysis.json").read_text(encoding="utf-8"))
+    analysis.update(_analysis())
+    (job_dir / "analysis.json").write_text(json.dumps(analysis, ensure_ascii=False), encoding="utf-8")
 
     first = finalize_job(settings, job_dir)
     second = finalize_job(settings, job_dir)

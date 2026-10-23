@@ -11,9 +11,9 @@ from pathlib import Path
 from typing import Any
 
 from .config import Settings
+from .editorial_integrity import validate_media_markup, validate_source_literals
 from .evidence import validate_evidence_map
 from .evidence_contract import evidence_set_id
-from .editorial_integrity import validate_media_markup, validate_source_literals
 from .first_image import materialize_first_image
 from .github_client import SourceBundle, SourceDocument
 from .input_resolver import ResolvedRepository
@@ -27,8 +27,8 @@ from .note_template import (
     render_note,
     safe_title,
 )
-from .research_packet import ResearchPacketError, archive_runtime_packet, packet_id, packet_path, validate_packet
 from .publish_safety import PublishSafetyError, json_atomic, publish_bytes, repository_lock, sha256
+from .research_packet import ResearchPacketError, archive_runtime_packet, packet_id, packet_path, validate_packet
 from .source_planner import is_media_path
 
 _ACTIVE_JOB_STATES = {"collected", "packet_archived", "analysis_required", "analysis_complete", "publishing"}
@@ -1117,8 +1117,11 @@ def _publish_capture_note(
             originally_hash = str(job.get("target_note_sha256") or "")
             if (not originally_targeted or Path(originally_targeted).resolve() != path.resolve()
                     or originally_hash != expected_old):
+                # Preserve the documented legacy-migration blocker alongside v8 SHA protection.
+                legacy_migration = job.get("publish_operation") == "replace_legacy"
                 return {
-                    "status": "note_target_changed", "job_dir": str(job_dir),
+                    "status": "legacy_target_changed" if legacy_migration else "note_target_changed",
+                    "job_dir": str(job_dir),
                     "note_path": str(path), "message": "prepare 后目标笔记发生变化或首次出现；请重新准备任务。",
                 }
         existing = old_bytes.decode("utf-8")
