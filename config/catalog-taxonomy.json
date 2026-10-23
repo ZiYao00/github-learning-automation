@@ -1,0 +1,242 @@
+{
+  "schema_version": 1,
+  "description": "GitHub 收藏导航的功能分类与项目形态，唯一 owner/repo 标识；新仓库不在映射时显示在待分类。",
+  "categories": [
+    "Agent 平台与编排",
+    "Agent 记忆与上下文",
+    "编程开发与测试",
+    "浏览器自动化与信息采集",
+    "ComfyUI 与图像处理",
+    "视频、音频与内容生产",
+    "UI 设计、动效与 3D",
+    "文档、笔记与素材管理",
+    "AI 模型、推理与研究",
+    "商业、营销与教育"
+  ],
+  "repositories": {
+    "paperclipai/paperclip": {
+      "category": "Agent 平台与编排",
+      "kind": "工具/应用"
+    },
+    "Tencent/teamai-cli": {
+      "category": "Agent 平台与编排",
+      "kind": "工具/应用"
+    },
+    "rebel0789/codexpro": {
+      "category": "Agent 平台与编排",
+      "kind": "工具/应用"
+    },
+    "TencentCloud/Octop": {
+      "category": "Agent 平台与编排",
+      "kind": "工具/应用"
+    },
+    "mvschwarz/openrig": {
+      "category": "Agent 平台与编排",
+      "kind": "工具/应用"
+    },
+    "ruvnet/ruflo": {
+      "category": "Agent 平台与编排",
+      "kind": "库/框架"
+    },
+    "Osmantic/ODS": {
+      "category": "Agent 平台与编排",
+      "kind": "工具/应用"
+    },
+    "WenyuChiou/awesome-agentic-ai-zh": {
+      "category": "Agent 平台与编排",
+      "kind": "资源/规则"
+    },
+    "vectorize-io/hindsight": {
+      "category": "Agent 记忆与上下文",
+      "kind": "库/框架"
+    },
+    "mksglu/context-mode": {
+      "category": "Agent 记忆与上下文",
+      "kind": "工具/应用"
+    },
+    "rohitg00/agentmemory": {
+      "category": "Agent 记忆与上下文",
+      "kind": "库/框架"
+    },
+    "Tencent/WeKnora": {
+      "category": "Agent 记忆与上下文",
+      "kind": "工具/应用"
+    },
+    "tester-army/e2e": {
+      "category": "编程开发与测试",
+      "kind": "工具/应用"
+    },
+    "alibaba/open-code-review": {
+      "category": "编程开发与测试",
+      "kind": "工具/应用"
+    },
+    "DietrichGebert/ponytail": {
+      "category": "编程开发与测试",
+      "kind": "Skill"
+    },
+    "morluto/rea": {
+      "category": "编程开发与测试",
+      "kind": "工具/应用"
+    },
+    "multica-ai/andrej-karpathy-skills": {
+      "category": "编程开发与测试",
+      "kind": "资源/规则"
+    },
+    "boykopovar/AnyPS5": {
+      "category": "编程开发与测试",
+      "kind": "库/框架"
+    },
+    "EpicGames/raddebugger": {
+      "category": "编程开发与测试",
+      "kind": "工具/应用"
+    },
+    "abue-ammar/tinycast": {
+      "category": "编程开发与测试",
+      "kind": "工具/应用"
+    },
+    "Panniantong/Agent-Reach": {
+      "category": "浏览器自动化与信息采集",
+      "kind": "Skill+工具"
+    },
+    "Tencent/BrowserSkill": {
+      "category": "浏览器自动化与信息采集",
+      "kind": "Skill+工具"
+    },
+    "mvanhorn/last30days-skill": {
+      "category": "浏览器自动化与信息采集",
+      "kind": "Skill"
+    },
+    "D4Vinci/Scrapling": {
+      "category": "浏览器自动化与信息采集",
+      "kind": "库/框架"
+    },
+    "chflame163/ComfyUI_Qwen_H3_Prompt": {
+      "category": "ComfyUI 与图像处理",
+      "kind": "工具/应用"
+    },
+    "BigStationW/ComfyUi-Untwisting-RoPE": {
+      "category": "ComfyUI 与图像处理",
+      "kind": "工具/应用"
+    },
+    "NyxAwroo/IMG-Dataset-Refiner": {
+      "category": "ComfyUI 与图像处理",
+      "kind": "工具/应用"
+    },
+    "shootthesound/ComfyUI-Angelo": {
+      "category": "ComfyUI 与图像处理",
+      "kind": "工具/应用"
+    },
+    "CapSoftware/Cap": {
+      "category": "视频、音频与内容生产",
+      "kind": "工具/应用"
+    },
+    "liyue-aigc/seedance-2-5-video-director": {
+      "category": "视频、音频与内容生产",
+      "kind": "Skill"
+    },
+    "ATH-MaaS/Pixelle-Video": {
+      "category": "视频、音频与内容生产",
+      "kind": "工具/应用"
+    },
+    "debpalash/VoiceStudio": {
+      "category": "视频、音频与内容生产",
+      "kind": "工具/应用"
+    },
+    "lingfengQAQ/webnovel-writer": {
+      "category": "视频、音频与内容生产",
+      "kind": "Skill+工具"
+    },
+    "calesthio/OpenMontage": {
+      "category": "视频、音频与内容生产",
+      "kind": "Skill+工具"
+    },
+    "hypit-ai/hypit": {
+      "category": "视频、音频与内容生产",
+      "kind": "Skill+工具"
+    },
+    "abi/screenshot-to-code": {
+      "category": "UI 设计、动效与 3D",
+      "kind": "工具/应用"
+    },
+    "zanwei/design-dna": {
+      "category": "UI 设计、动效与 3D",
+      "kind": "Skill"
+    },
+    "greensock/gsap-skills": {
+      "category": "UI 设计、动效与 3D",
+      "kind": "Skill"
+    },
+    "bilawalsidhu/gods-eye-view": {
+      "category": "UI 设计、动效与 3D",
+      "kind": "资源/规则"
+    },
+    "DavidHDev/vue-bits": {
+      "category": "UI 设计、动效与 3D",
+      "kind": "库/框架"
+    },
+    "earthtojake/text-to-cad": {
+      "category": "UI 设计、动效与 3D",
+      "kind": "工具/应用"
+    },
+    "PDFMathTranslate/PDFMathTranslate": {
+      "category": "文档、笔记与素材管理",
+      "kind": "工具/应用"
+    },
+    "presenton/presenton": {
+      "category": "文档、笔记与素材管理",
+      "kind": "工具/应用"
+    },
+    "microsoft/markitdown": {
+      "category": "文档、笔记与素材管理",
+      "kind": "工具/应用"
+    },
+    "ZiYao00/bili-learning-automation": {
+      "category": "文档、笔记与素材管理",
+      "kind": "工具/应用"
+    },
+    "immich-app/immich": {
+      "category": "文档、笔记与素材管理",
+      "kind": "工具/应用"
+    },
+    "JustVugg/colibri": {
+      "category": "AI 模型、推理与研究",
+      "kind": "库/框架"
+    },
+    "jingyaogong/minimind": {
+      "category": "AI 模型、推理与研究",
+      "kind": "库/框架"
+    },
+    "NandhaKishorM/laya": {
+      "category": "AI 模型、推理与研究",
+      "kind": "库/框架"
+    },
+    "magnitudedev/magnitude": {
+      "category": "AI 模型、推理与研究",
+      "kind": "库/框架"
+    },
+    "K-Dense-AI/scientific-agent-skills": {
+      "category": "AI 模型、推理与研究",
+      "kind": "Skill"
+    },
+    "coreyhaines31/marketingskills": {
+      "category": "商业、营销与教育",
+      "kind": "Skill"
+    },
+    "THU-MAIC/OpenMAIC": {
+      "category": "商业、营销与教育",
+      "kind": "工具/应用"
+    },
+    "MadsLorentzen/ai-job-search": {
+      "category": "商业、营销与教育",
+      "kind": "Skill+工具"
+    },
+    "chenjin-cmd/wechat-graphic-monetization": {
+      "category": "商业、营销与教育",
+      "kind": "Skill"
+    },
+    "bleedline/aimoneyhunter": {
+      "category": "商业、营销与教育",
+      "kind": "资源/规则"
+    }
+  }
+}

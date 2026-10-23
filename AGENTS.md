@@ -12,6 +12,8 @@ python scripts\github_learning.py <command>
 
 如果 `github-learning` 已安装，可作为等价入口。
 
+**Windows 解释器选择：** 上文示例的 `python` 指项目已确认的解释器，不代表可以直接采用 PATH 中第一个 `python.exe`。优先使用项目自身的虚拟环境；如果本机没有项目环境，先检查项目的 `requires-python`，确认兼容后优先显式执行 `py -3.12 scripts/github_learning.py <command>`。不得借用 Hermes 等其他 Agent 的私有虚拟环境，也不要为了消除报错擅自安装项目依赖。该约定仅约束本机选择，不改变其他操作系统或项目既有的运行入口。若本机仓库父目录存在 `DEV-ENV.md`，在报告 Ruff、pytest 不可用前先按权限读取其公共工具说明；项目配置仍具有优先级。
+
 ## 首次运行门禁
 
 真实采集前先执行：

@@ -8,10 +8,11 @@ from __future__ import annotations
 import difflib
 import html
 import re
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterator, Sequence
+from typing import Any
 from urllib.parse import urlsplit
 
 from .config import Settings
@@ -49,7 +50,7 @@ DEFAULT_CATALOG = """# GitHub 仓库收藏清单
 
 收藏不触发正式采集。正式研究沿用 prepare → 分析 → finalize。
 导航是自动生成的视图，不在导航中手动勾选；冲突应先核对，不覆盖人工决定。
-""".encode("utf-8")
+""".encode()
 
 
 class CatalogError(ValueError):

@@ -279,6 +279,40 @@ def inspect_catalog(settings: Settings) -> dict[str, Any]:
     return {"status": "catalog_ready", "catalog_sha256": digest, **view, "network_used": False}
 
 
+_CATALOG_KINDS = {"Skill", "Skill+工具", "工具/应用", "库/框架", "资源/规则"}
+
+
+def _load_taxonomy(settings: Settings) -> tuple[list[str], dict[str, dict[str, str]]] | None:
+    """Optional project-owned taxonomy. Missing projects retain the legacy status view."""
+    root = settings.project_root.resolve()
+    path = root / "config" / "catalog-taxonomy.json"
+    if not path.exists():
+        return None
+    if not path.is_file() or path.is_symlink() or not path.resolve().is_relative_to(root):
+        raise CatalogError("catalog_taxonomy_invalid", "仓库分类配置路径无效。")
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+        names = value["categories"]
+        records = value["repositories"]
+        if (value.get("schema_version") != 1 or not isinstance(names, list)
+                or not names or not isinstance(records, dict)
+                or not all(isinstance(x, str) and x.strip() for x in names)
+                or len(set(names)) != len(names)):
+            raise ValueError("taxonomy schema or category list")
+        classified: dict[str, dict[str, str]] = {}
+        for repo, item in records.items():
+            if not isinstance(repo, str) or not isinstance(item, dict):
+                raise ValueError("repository mapping")
+            name = normalize_repository(repo).full_name.casefold()
+            if (name in classified or item.get("category") not in names
+                    or item.get("kind") not in _CATALOG_KINDS):
+                raise ValueError("duplicate or unknown category/kind")
+            classified[name] = {"category": item["category"], "kind": item["kind"]}
+        return names, classified
+    except (OSError, UnicodeError, ValueError, KeyError, TypeError, AttributeError) as exc:
+        raise CatalogError("catalog_taxonomy_invalid", "仓库分类配置不可解析；未更新导航。") from exc
+
+
 def render_navigation(settings: Settings, view: dict[str, Any]) -> bytes:
     catalog = note_link(settings, checked_path(settings, CATALOG_NAME), label="收藏清单与重点推荐") or CATALOG_NAME
     counts = view["counts"]
@@ -290,36 +324,73 @@ def render_navigation(settings: Settings, view: dict[str, Any]) -> bytes:
              f"收藏 **{counts['catalog_total']}** 项 · 已核验充分研究 **{counts['catalog_sufficient']}** 项 · "
              f"待补研究 **{counts['catalog_minimal']}** 项 · 待重制 **{counts['catalog_rework_pending']}** 项 · "
              f"暂缓 **{counts['catalog_deferred']}** 项", ""]
-    groups: dict[str, list[dict[str, Any]]] = {name: [] for name in ["待研究", "待重制", "待补研究", "已归档 / 已实测", "暂缓", "收藏中的待核对项"]}
-    for entry in view["entries"]:
-        if entry["status"] == "待重制":
-            group = "待重制"
-        elif entry["diagnostics"]:
-            group = "收藏中的待核对项"
-        elif entry["status"] == "暂缓":
-            group = "暂缓"
-        elif entry["complete"]:
-            group = "已归档 / 已实测"
-        elif entry["archive_state"] == "insufficient":
-            group = "待补研究"
-        else:
-            group = "待研究"
-        groups[group].append(entry)
-    for title, items in groups.items():
-        lines.extend([f"## {title}（{len(items)}）", ""])
-        if not items:
-            lines.extend(["暂无。", ""])
-            continue
-        items = sorted(items, key=lambda e: PRIORITIES.index(e["priority"]) if e["priority"] in PRIORITIES else 3)
-        for entry in items:
-            repo = entry["repository"]
-            link = f" · {entry['note_link']}" if entry["note_link"] else ""
-            lines.append(f"- [{'x' if entry['complete'] else ' '}] [{repo}](https://github.com/{repo}) · {text_cell(entry['priority'])}{link}")
-            # Existing editorial prose is retained in its source table; navigation
-            # treats it as text rather than reactivating arbitrary Markdown/HTML.
-            prose = re.sub(r"\\([\\`\[\]*_|!])", r"\1", entry["description"])
-            lines.append("  " + text_cell(prose))
-        lines.append("")
+    taxonomy = _load_taxonomy(settings)
+    if taxonomy is None:
+        groups: dict[str, list[dict[str, Any]]] = {name: [] for name in ["待研究", "待重制", "待补研究", "已归档 / 已实测", "暂缓", "收藏中的待核对项"]}
+        for entry in view["entries"]:
+            if entry["status"] == "待重制":
+                group = "待重制"
+            elif entry["diagnostics"]:
+                group = "收藏中的待核对项"
+            elif entry["status"] == "暂缓":
+                group = "暂缓"
+            elif entry["complete"]:
+                group = "已归档 / 已实测"
+            elif entry["archive_state"] == "insufficient":
+                group = "待补研究"
+            else:
+                group = "待研究"
+            groups[group].append(entry)
+        for title, items in groups.items():
+            lines.extend([f"## {title}（{len(items)}）", ""])
+            if not items:
+                lines.extend(["暂无。", ""])
+                continue
+            items = sorted(items, key=lambda e: PRIORITIES.index(e["priority"]) if e["priority"] in PRIORITIES else 3)
+            for entry in items:
+                repo = entry["repository"]
+                link = f" · {entry['note_link']}" if entry["note_link"] else ""
+                lines.append(f"- [{'x' if entry['complete'] else ' '}] [{repo}](https://github.com/{repo}) · {text_cell(entry['priority'])}{link}")
+                # Existing editorial prose is retained in its source table; navigation
+                # treats it as text rather than reactivating arbitrary Markdown/HTML.
+                prose = re.sub(r"\\([\\`\[\]*_|!])", r"\1", entry["description"])
+                lines.append("  " + text_cell(prose))
+            lines.append("")
+    else:
+        names, catalog_kinds = taxonomy
+        by_category: dict[str, list[dict[str, Any]]] = {name: [] for name in names}
+        by_category["其他 / 待分类"] = []
+        skill_entries: list[dict[str, Any]] = []
+        mixed_entries: list[dict[str, Any]] = []
+        for entry in view["entries"]:
+            detail = catalog_kinds.get(entry["repository"].casefold())
+            category = detail["category"] if detail is not None else "其他 / 待分类"
+            by_category[category].append(entry)
+            if detail is not None and detail["kind"] == "Skill":
+                skill_entries.append(entry)
+            elif detail is not None and detail["kind"] == "Skill+工具":
+                mixed_entries.append(entry)
+
+        lines.extend(["> 以下分类是使用场景与项目形态的初步判断，不代表已安装或测试。", ""])
+        for title, items in [("Skill", skill_entries), ("Skill + 工具", mixed_entries)]:
+            links = " · ".join(f"[{e['repository']}](https://github.com/{e['repository']})" for e in items)
+            lines.extend([f"**{title}（{len(items)}）**：{links or '暂无'}", ""])
+        lines.extend(["## 按功能分类", ""])
+        for title, items in by_category.items():
+            if not items:
+                continue
+            lines.extend([f"### {title}（{len(items)}）", ""])
+            items = sorted(items, key=lambda e: PRIORITIES.index(e["priority"]) if e["priority"] in PRIORITIES else 3)
+            for entry in items:
+                repo = entry["repository"]
+                detail = catalog_kinds.get(repo.casefold())
+                kind = detail["kind"] if detail is not None else "未核对"
+                status = "待核对" if entry["diagnostics"] else entry["status"]
+                link = f" · {entry['note_link']}" if entry["note_link"] else ""
+                lines.append(f"- [{'x' if entry['complete'] else ' '}] [{repo}](https://github.com/{repo}) · {text_cell(kind)} · {text_cell(entry['priority'])} · {text_cell(status)}{link}")
+                prose = re.sub(r"\\([\\`\[\]*_|!])", r"\1", entry["description"])
+                lines.append("  " + text_cell(prose))
+            lines.append("")
     formal = [e for e in view["unlisted"] if e["archive_state"] in {"sufficient", "insufficient"}]
     legacy = [e for e in view["unlisted"] if e["archive_state"] not in {"sufficient", "insufficient"}]
     for title, items in [("已有正式笔记 · 未列入收藏清单", formal), ("历史笔记 / 身份冲突 · 待核验", legacy)]:

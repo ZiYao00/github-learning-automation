@@ -207,6 +207,39 @@ class CatalogTests(unittest.TestCase):
         self.assertFalse((self.notes / NAV_NAME).exists())
         self.assertEqual(raw, self.catalog.read_bytes())
 
+    def test_category_navigation_groups_skills_and_keeps_new_repos_visible(self) -> None:
+        config = self.project / "config"
+        config.mkdir()
+        (config / "catalog-taxonomy.json").write_text(json.dumps({
+            "schema_version": 1,
+            "categories": ["Agent", "Video"],
+            "repositories": {
+                "example/r0": {"category": "Agent", "kind": "Skill"},
+                "example/r1": {"category": "Video", "kind": "Skill+工具"},
+            },
+        }), encoding="utf-8")
+        result = navigation(self.settings, dry_run=True)
+        rendered = result["preview"]
+        self.assertIn("**Skill（1）**", rendered)
+        self.assertIn("**Skill + 工具（1）**", rendered)
+        self.assertIn("### Agent（1）", rendered)
+        self.assertIn("### Video（1）", rendered)
+        self.assertIn("### 其他 / 待分类（32）", rendered)
+        self.assertFalse((self.notes / NAV_NAME).exists())
+
+    def test_invalid_category_mapping_fails_before_navigation_write(self) -> None:
+        config = self.project / "config"
+        config.mkdir()
+        (config / "catalog-taxonomy.json").write_text(json.dumps({
+            "schema_version": 1,
+            "categories": ["Agent"],
+            "repositories": {"example/r0": {"category": "Agent", "kind": "unknown"}},
+        }), encoding="utf-8")
+        with self.assertRaises(CatalogError) as ctx:
+            navigation(self.settings)
+        self.assertEqual(ctx.exception.code, "catalog_taxonomy_invalid")
+        self.assertFalse((self.notes / NAV_NAME).exists())
+
     def test_duplicate_notes_block_completion_and_links(self) -> None:
         self.note("example/r0")
         self.note("example/r0", name="另一个名字.md", legacy=True)
